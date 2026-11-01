@@ -1,0 +1,173 @@
+# Web Handler: ghi chú dự án
+
+Cập nhật: 2026-11-01. Phiên bản hiện tại: **0.1.2**.
+
+Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
+
+## Trạng thái
+
+| Hạng mục | Tình trạng |
+|---|---|
+| App và bản đóng gói 0.1.2 | Xong |
+| Test tự động của app | 125/125 đạt (`test_core` 46, `test_html_reader` 18, `test_integration` 22, `test_ui` 39) |
+| Test công cụ probe | 30/30 đạt ở lần chạy gần nhất, không chạy lại ở 0.1.1 và 0.1.2 vì phần này không đổi |
+| Gói 0.1.2 giải nén sạch | Setup đạt cả 7 mục. Demo cho đúng kết quả dự kiến: 3 OK, 1 Lỗi, 1 Bỏ qua. Clear all chạy đúng |
+| Máy công ty và hệ thống thật | **Chưa kiểm chứng, đây là rủi ro lớn nhất** |
+| Git | Thư mục chưa phải repo git. Chưa commit, chưa phát hành lên đâu, chỉ có file zip trên máy |
+
+## Cách chạy
+
+- Bản đang dùng: bấm đúp `web_handler/dist/WebHandler/Start.bat`. Giữ cửa sổ đó mở, đóng nó là tắt app.
+- Mang sang máy khác: giải nén `web_handler/dist/WebHandler-0.1.2.zip` vào nơi có quyền ghi, không dùng thư mục Temp.
+- Lần đầu app mở màn hình Setup: bấm `Install missing`, rồi `Open app`.
+- Thử nhanh: bấm `Open sample flow`, rồi `▶ Run`.
+
+Lệnh cho người phát triển (chạy trong `web_handler`, dùng Python 3.12 của máy):
+
+```
+python tests/test_core.py
+python tests/test_html_reader.py
+python tests/test_integration.py
+python tests/test_ui.py
+python tools/build_package.py
+```
+
+## Tính năng đã có
+
+### Setup và đóng gói
+- Gói offline gồm Python 3.12.16 riêng, thư viện (Playwright 1.64.1, openpyxl 3.1.5, beautifulsoup4 4.15.0, keyring 25.7.0) và Chromium dự phòng.
+- Màn hình Setup kiểm tra 7 mục: Python, thư viện, trình duyệt, quyền ghi, điều khiển trình duyệt, ghi thao tác, Credential Manager.
+- `Install missing` cài phần còn thiếu mà không cần mạng và không cần quyền admin, sau khi người dùng xác nhận.
+- Ưu tiên Chrome đã cài trên máy. Không có Chrome thì dùng Chromium riêng của app.
+
+### Dựng quy trình
+- `+ New flow` mở hộp chọn: `Blank flow` hoặc 3 mẫu `Login + Excel rows`, `Read into Excel`, `Repeat clicks`. Bấm là tạo ngay. Ô tên có thể để trống. Khối phụ thuộc trang để trống và ghi rõ công dụng, ví dụ `Ô tài khoản`. Mẫu dùng bí mật tên `tai_khoan`, `mat_khau`, người dùng tự lưu trong `Secrets`.
+- 10 loại khối kéo thả: `Open link`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
+- `Wait`: tạm ngưng theo số giây, mặc định 3, nhận số lẻ. Lúc chạy, khối và dòng trạng thái đếm ngược. Bấm `Stop after this row` trong lúc chờ thì vẫn chờ hết và làm xong hàng đó. `Stop` trong `Check on live page` thì dừng ngay.
+- Sắp xếp lại bằng cách kéo khối, xóa bằng `Delete block` hoặc phím Delete.
+- `Loop`: kéo chuột khoanh các khối liên tiếp rồi bấm `Create loop`, để phần đăng nhập nằm ngoài vùng lặp. Lặp theo từng hàng Excel hoặc theo số lần cố định. Mỗi quy trình có một vùng lặp.
+- `Clear all`: xóa mọi khối, vùng lặp và cấu hình Excel của quy trình, sau khi hỏi xác nhận. Giữ tên quy trình, file Excel, Secrets và lịch sử chạy. Không hoàn tác được.
+- `● Record`: làm tay một lượt trong Chrome, tool ghi lại thành các bước để xem lại trước khi đưa vào sơ đồ. Ô mật khẩu không bao giờ được ghi.
+- Quy trình tự lưu. Có thể nhân bản và xóa ở trang chính.
+
+### Chỉ phần tử cho khối
+- `Paste element`: dán outerHTML của một phần tử, tool đề xuất cách nhận diện và loại khối phù hợp.
+- `Paste page`: dán HTML cả trang, tool liệt kê các phần tử để chọn.
+- `Scan open page`: quét trang thật. Để trống link thì tool chạy các khối phía trước rồi quét. Điền link thì mở thẳng link đó.
+- Ô Iframe và thông tin Dự phòng đã được bỏ khỏi giao diện theo yêu cầu. Phần xử lý vẫn chạy ngầm khi tool tự nhận diện qua Scan hoặc Record.
+
+### Nguồn dữ liệu của khối
+- Các tab tách riêng: `Text`, `Excel`, `Secret`, và `Variable` khi có biến. Riêng `Open link` chỉ có `Text` và `Excel`.
+- Ở tab `Excel`, nhập `C` là cột C. Tool hiện tiêu đề cột và giá trị mẫu, và cảnh báo nếu khối chưa nằm trong vùng lặp theo Excel.
+- Ghép được trong tab `Text`, ví dụ `https://site/{{A}}/edit`.
+- Trường hợp đã test: cột A chứa link, cột B chứa nội dung, mỗi hàng mở đúng link và điền đúng nội dung của hàng đó.
+
+### Excel
+- Chọn file, sheet, hàng bắt đầu và hàng kết thúc ở thanh dưới.
+- Ô "đến" để trống: hiện `Chạy tới hết cột A (gặp ô trống)` và dừng ở ô trống đầu tiên của cột đó.
+  - Cột dừng là cột đầu tiên mà các khối trong vùng lặp dùng. Nếu không khối nào dùng cột thì lấy cột bắt buộc đầu tiên.
+- Ô "đến" có điền: hiện `tối đa N lần`, chạy đúng dải đó.
+- Có thể đặt cột bắt buộc (thiếu thì bỏ qua hàng) và cột ghi trạng thái.
+- File gốc không bị sửa. Kết quả nằm ở file `<tên>_result_<thời gian>` cạnh file gốc.
+
+### `Check on live page`
+- Chạy thật các khối phía trước, tô đỏ phần tử, rồi thử xem hành động có làm được không. Khối đang kiểm tra không được thực hiện thật.
+- Hỏi xác nhận trước khi chạy các khối `Click`, `Select`, `Check` chưa được duyệt. Khối trong vùng lặp dùng hàng Excel đầu tiên.
+- Lần kiểm tra sau chỉ chạy phần mới, nếu các khối trước chưa đổi và trang vẫn ở chỗ cũ.
+- Khi gặp lỗi: báo dừng ở khối nào và tô đỏ khối đó. Khối chưa điền đủ được báo ngay, không mở trình duyệt.
+- Báo được các trường hợp: phần tử bị ẩn, che, khóa, không phải ô nhập, không phải danh sách chọn, hoặc bấm xong mà trang không chuyển.
+- `Manual step` hiện nút `Continue` trong lúc kiểm tra. Có nút `Stop` để dừng giữa chừng.
+
+### Chạy và theo dõi
+- `Run once` chạy thật một hàng. `▶ Run` chạy toàn bộ. Cả hai đều kiểm tra lỗi và hỏi xác nhận trước, kèm số lần chạy, tên miền truy cập và cột sẽ ghi.
+- Sơ đồ trên màn hình chạy: khối sáng xanh dần theo bước đang chạy, hết vòng thì các khối trong vùng lặp trở lại bình thường.
+  - Khối làm dừng lượt chạy sẽ đỏ và giữ nguyên.
+  - Hàng lỗi mà lượt chạy vẫn tiếp tục thì khối đỏ thêm khoảng 1,5 giây sau khi sang hàng mới.
+- `Stop after this row`, `Continue`, `Stop`, `Resume`, `Retry failed rows`, `Retry failed and unclear rows`.
+- Hàng lỗi có ảnh chụp màn hình (`View screenshot`). Tool tạm dừng sau 3 hàng lỗi liên tiếp.
+- Có nhật ký để chạy tiếp sau khi app dừng đột ngột. Hàng đang chạy dở được đánh dấu `Chưa rõ`.
+
+### Log hệ thống
+- Nút `Log` ở góc trái, ngay trên `Select Excel`, có `Clear` và `Close`.
+- Ghi lại lần khởi động, Setup, các lần chạy, ghi thao tác, kiểm tra và lỗi của app.
+- Lưu ở `data/system.log` nên còn sau khi tắt app. Không chứa mật khẩu hay nội dung đã điền từ Excel.
+
+### Bảo mật và giao diện
+- Mật khẩu nằm trong Windows Credential Manager (`Secrets`). File quy trình chỉ chứa tên, ví dụ `{{secret:mat_khau}}`.
+- Server chỉ nghe trên 127.0.0.1, có mã phiên và kiểm tra Host, Origin.
+- Tên sản phẩm trung tính, không nhắc tới hệ thống cụ thể nào.
+- Mọi thứ bấm được dùng tiếng Anh. Hướng dẫn, nhãn ô nhập, trạng thái và thông báo dùng tiếng Việt.
+- Trang demo có sẵn trong app để thử mà không đụng hệ thống thật. Mở quy trình mẫu sẽ thêm `demo_user` và `demo_password` vào Credential Manager.
+- Quy trình mẫu cố định, tên `Sample flow`, chỉ mở bằng `Open sample flow` và không hiện trong danh sách `Quy trình của bạn`. Mỗi lần mở đều đặt lại quy trình, file `example_data.xlsx` và dữ liệu trang demo về ban đầu.
+
+## Lịch sử phiên bản
+
+### 0.1.0
+- Bản đầu: Setup, kéo thả khối, vùng lặp, Excel, Record, Secrets, trang demo, màn hình chạy, đóng gói.
+
+### 0.1.1
+- Thêm `Clear all`.
+- Đổi nút và tên khối sang tiếng Anh.
+- Sửa `build_package.py` để build không xóa `data` và `runtime` của `dist/WebHandler`.
+
+### 0.1.2
+- Tách nguồn dữ liệu thành các tab, cho `Open link` lấy link từ Excel.
+- Bỏ ô Iframe, thông tin Dự phòng và ô link kiểm tra khỏi panel.
+- Sửa `Check on live page`: trước đây nút chỉ mở link gần nhất mà không chạy các khối ở giữa, nên phần tử sau đăng nhập không bao giờ được tìm thấy.
+- Thêm nút `Log`, sơ đồ sáng theo bước khi chạy, và quy tắc dừng ở ô trống khi để trống ô "đến".
+
+### 0.1.3
+- `New flow` có 3 mẫu dựng sẵn, bấm là tạo ngay.
+- Thêm khối `Wait` có đếm ngược.
+- Quy trình mẫu không còn hiện trong danh sách, đổi tên thành `Sample flow`. Đổi `du_lieu_mau.xlsx` thành `example_data.xlsx`.
+
+## File chính
+
+Toàn bộ nằm trong `web_handler/`.
+
+| File hoặc thư mục | Vai trò |
+|---|---|
+| `Start.bat`, `README.txt` | Khởi động app, hướng dẫn cho người dùng |
+| `app/main.py` | Điểm vào, dùng lại app nếu đang chạy |
+| `app/web_handler/server.py` | Server cục bộ và API |
+| `app/web_handler/jobs.py`, `workers.py`, `worker.py` | Quản lý và chạy tiến trình làm việc với trình duyệt |
+| `app/web_handler/runner.py`, `browser.py`, `browser_errors.py` | Chạy từng khối, điều khiển trình duyệt |
+| `app/web_handler/flow.py`, `templating.py` | File quy trình, kiểm tra trước khi chạy, mẫu `{{...}}` |
+| `app/web_handler/flow_templates.py` | Các mẫu quy trình trong hộp `New flow` |
+| `app/web_handler/excel.py` | Đọc hàng, ghi file kết quả |
+| `app/web_handler/html_reader.py`, `recorder.py` | Đọc HTML đã dán, ghi thao tác |
+| `app/web_handler/secret_store.py` | Credential Manager |
+| `app/web_handler/setup_manager.py`, `setup_checks.py`, `selftest.py` | Màn hình Setup |
+| `app/web_handler/system_log.py` | Log hệ thống |
+| `app/web_handler/demo_site.py`, `file_dialog.py`, `paths.py` | Trang demo, hộp thoại chọn file, đường dẫn |
+| `app/web_handler/ui/` | Giao diện: `index.html`, `app.css`, `common.js`, `home.js`, `canvas.js`, `properties.js`, `builder.js`, `record.js`, `run.js`, `setup.js`, `log.js`, `app.js` |
+| `tests/` | `test_core.py`, `test_html_reader.py`, `test_integration.py`, `test_ui.py`, `test_probe.py` |
+| `tools/` | `build_package.py`, `build_probe.py`, các file requirements |
+| `probe/` | Công cụ dò khả năng chạy trên máy công ty |
+| `dist/` | `WebHandler-0.1.0.zip`, `-0.1.1.zip`, `-0.1.2.zip`, `WebHandlerProbe.zip`, và bản đang dùng `WebHandler/` |
+
+Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-handler-design.md`, kế hoạch trong `plans/`.
+
+### File sửa ở đợt gần nhất (0.1.1 và 0.1.2)
+- Mới: `app/web_handler/system_log.py`, `app/web_handler/ui/log.js`.
+- Python: `__init__.py`, `browser.py`, `excel.py`, `flow.py`, `jobs.py`, `recorder.py`, `runner.py`, `server.py`, `setup_manager.py`, `worker.py`.
+- Giao diện: `index.html`, `app.css`, `app.js`, `builder.js`, `canvas.js`, `common.js`, `home.js`, `properties.js`, `record.js`, `run.js`, `setup.js`.
+- Khác: `README.txt`, `tools/build_package.py`, `tests/test_core.py`, `tests/test_integration.py`, `tests/test_ui.py`.
+
+## Chưa kiểm chứng và lưu ý
+
+- **Máy công ty và hệ thống thật:** chưa thử, chưa có `probe_report.txt`. Nếu công ty chặn Playwright thì phải viết lại `browser.py` và xem lại chế độ ghi.
+- **Thao tác tay của người thật:** hộp thoại `Select Excel` và nút `Open result file` chưa được chạy thử. Chế độ ghi mới được test bằng thao tác tự động.
+- **Máy sạch không mạng:** chưa thử. Lúc thử gói, máy phát triển vẫn có mạng và có sẵn Python.
+- **File Excel đang mở trong Excel:** chưa thử.
+- **Trang đã đăng nhập sẵn:** khi sửa khối phía trước hoặc kiểm tra lùi về khối trước, `Check on live page` chạy lại từ đầu. Trang tự chuyển qua màn hình đăng nhập có thể làm khối đăng nhập báo không thấy ô nhập. `Run` cũng có thể gặp lỗi này nếu phiên đăng nhập còn hiệu lực.
+- **Xem lại lần chạy cũ:** sơ đồ chỉ sáng trong lúc app còn giữ lần chạy đó. Mở lại lần chạy đã kết thúc thì sơ đồ không có màu.
+- **Avast:** trên máy phát triển, Avast đã cách ly `Start.bat` (`IDP.HELU.PSD11`) khi gói chạy từ `C:\Windows\Temp` qua script. Chạy từ ổ `F:` thì không bị. Các bản thử nghiệm bị cách ly vẫn nằm trong khu cách ly của Avast.
+- **Quy trình YouTube đang lưu:** ở lần kiểm tra cuối, ô tìm kiếm đang dùng khối `Select` nên không chạy được, cần đổi sang `Fill`. Khối `Open link` khi đó còn trống.
+
+## Khi làm tiếp
+
+- `dist/WebHandler/data` chứa quy trình và phiên đăng nhập thật của người dùng. Không xóa thư mục này, và không kill tiến trình của app trong `dist/WebHandler` nếu chưa được đồng ý.
+- Sau khi đổi Python phải đóng và mở lại app. Chỉ đổi giao diện thì F5 là đủ.
+- Chạy thử gói từ ổ làm việc, không chạy từ thư mục Temp, để tránh Avast.
+- Test có thể xóa `demo_user` và `demo_password` khỏi Credential Manager. Mở lại quy trình mẫu sẽ tạo lại hai mục này.
