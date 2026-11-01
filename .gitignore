@@ -1,0 +1,27 @@
+# Personal data: flows, browser profile, run history, secret names
+data/
+
+# Built or downloaded on each machine
+build/
+dist/
+runtime/
+offline/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Temporary files
+*.tmp
+*.log
+~$*
+Thumbs.db
+Desktop.ini
+.superpowers/
+
+# Editors
+.vscode/
+.idea/

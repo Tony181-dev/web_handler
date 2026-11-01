@@ -1,0 +1,408 @@
+'use strict';
+
+// The flow diagram: blocks arrange and connect themselves; people only choose order.
+// `editor` provides: flow, selection (Set of ids), select(), changed(), addStep(), issuesByStep.
+
+const DRAG_THRESHOLD_PX = 5;
+
+// Where a whole value comes from: ['excel', 'C'], ['secret', 'name'], ['variable', 'name'] or ['text'].
+function sourceOf(value) {
+  const match = /^\{\{\s*(.+?)\s*\}\}$/.exec(value || '');
+  const token = match && !match[1].includes('{') ? match[1] : '';
+  if (/^[A-Z]{1,3}$/.test(token)) return ['excel', token];
+  if (token.startsWith('secret:')) return ['secret', token.slice(7).trim()];
+  if (token.startsWith('var:')) return ['variable', token.slice(4).trim()];
+  return ['text'];
+}
+
+// Same rule as stop_column() in flow.py: the first column the loop's blocks use decides where rows end.
+function stopColumn(flow) {
+  const loop = findLoop(flow);
+  if (!loop) return '';
+  for (const step of loop.steps) {
+    for (const key of ['url', 'value', 'equals', 'contains', 'url_contains', 'url_not_contains']) {
+      const match = /\{\{\s*([A-Z]{1,3})\s*\}\}/.exec(step[key] || '');
+      if (match) return match[1];
+    }
+  }
+  const required = (flow.excel && flow.excel.required) || [];
+  return required[0] || '';
+}
+
+function runsUntilText(column) {
+  return `Chạy tới hết cột${column ? ' ' + column : ''} (gặp ô trống)`;
+}
+
+function stepSummary(step) {
+  const target = step.target && step.target.primary;
+  switch (step.do) {
+    case 'goto': {
+      const [source, name] = sourceOf(step.url);
+      if (source === 'excel') return `Excel, cột ${name}`;
+      return step.url || step.note || 'chưa có link';
+    }
+    case 'verify': return step.url_not_contains ? `URL khác ${step.url_not_contains}` : step.url_contains ? `URL có ${step.url_contains}` : (target || 'chưa có điều kiện');
+    case 'manual_pause': return step.message || 'bấm Continue';
+    case 'wait': return `${step.seconds} giây`;
+    // A template's blank block says what it is for.
+    default: return target || step.note || 'chưa có phần tử';
+  }
+}
+
+function stepIsIncomplete(step) {
+  const targetSteps = ['fill', 'click', 'select', 'check', 'read', 'wait_for'];
+  if (step.do === 'goto' && !step.url) return true;
+  if (targetSteps.includes(step.do) && !(step.target && step.target.primary)) return true;
+  if ((step.do === 'fill' || step.do === 'select') && !step.value) return true;
+  if (step.do === 'read' && !step.save_to_var && !step.save_to_column) return true;
+  if (step.do === 'verify') {
+    const hasUrl = step.url_contains || step.url_not_contains;
+    const hasElement = (step.equals || step.contains) && step.target && step.target.primary;
+    if (!hasUrl && !hasElement) return true;
+  }
+  return false;
+}
+
+function nextStepId(flow) {
+  let highest = 0;
+  const visit = steps => steps.forEach(step => {
+    const number = parseInt(String(step.id || '').replace(/\D/g, ''), 10);
+    if (number > highest) highest = number;
+    if (step.steps) visit(step.steps);
+  });
+  visit(flow.steps);
+  return 's' + (highest + 1);
+}
+
+function findLoop(flow) {
+  return flow.steps.find(step => step.do === 'loop') || null;
+}
+
+function findStep(flow, id) {
+  for (const step of flow.steps) {
+    if (step.id === id) return step;
+    if (step.steps) {
+      const child = step.steps.find(item => item.id === id);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+// The blocks a run goes through before this one, with the loop's blocks taken once.
+function stepsBefore(flow, id) {
+  const before = [];
+  for (const step of flow.steps) {
+    for (const item of step.do === 'loop' ? step.steps : [step]) {
+      if (item.id === id) return before;
+      before.push(item);
+    }
+    if (step.id === id) return before;
+  }
+  return before;
+}
+
+function listContaining(flow, id) {
+  if (flow.steps.some(step => step.id === id)) return flow.steps;
+  const loop = findLoop(flow);
+  return loop && loop.steps.some(step => step.id === id) ? loop.steps : null;
+}
+
+function renderCanvas(editor) {
+  const canvas = editor.canvasNode;
+  const scroll = canvas.scrollTop;
+  const flow = editor.flow;
+  canvas.replaceChildren();
+
+  if (editor.selection.size > 1) canvas.append(renderSelectionBar(editor));
+
+  if (!flow.steps.length) {
+    canvas.append(el('div.canvas-empty', null,
+      el('h2', { text: 'Kéo khối từ bên trái vào đây' }),
+      el('p', { text: 'Hoặc bấm Record để tool tạo các bước khi bạn làm tay một lượt.', style: 'margin-top:6px' })));
+  }
+  const lane = el('div.lane', { 'data-lane': 'top' });
+  flow.steps.forEach((step, index) => {
+    if (step.do === 'loop') {
+      lane.append(el('div.item.block', { 'data-index': index }, renderLoop(editor, step)));
+    } else {
+      lane.append(renderItem(editor, step, index, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop'));
+    }
+  });
+  canvas.append(lane);
+  canvas.scrollTop = scroll;
+}
+
+function renderItem(editor, step, index, withArrow) {
+  const classes = ['node'];
+  if (editor.selection.has(step.id)) classes.push(editor.selection.size > 1 ? 'multi' : 'selected');
+  if (stepIsIncomplete(step)) classes.push('invalid');
+  if (editor.litSteps.has(step.id)) classes.push('lit');
+  if (editor.failedStep === step.id) classes.push('failed');
+  const node = el('div.' + classes.join('.'), {
+    'data-step': step.id,
+    tabindex: '0',
+    role: 'button',
+    'aria-label': `${STEP_NAMES[step.do]}: ${stepSummary(step)}`,
+    onkeydown: event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        editor.select(step.id);
+      }
+    },
+  }, el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
+  node.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, node));
+  return el('div.item', { 'data-index': index }, node, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+}
+
+function renderLoop(editor, loop) {
+  const selected = editor.selection.has(loop.id);
+  const lane = el('div.lane', { 'data-lane': 'loop' });
+  loop.steps.forEach((step, index) => lane.append(renderItem(editor, step, index, index < loop.steps.length - 1)));
+  if (!loop.steps.length) lane.append(el('div.loop-empty', { text: 'Thả khối vào đây để lặp lại chúng.' }));
+  const description = loop.source === 'count' ? `${loop.count || 1} lần` : 'mỗi hàng Excel';
+  const frame = el('div.loop-frame' + (selected ? '.selected' : ''), { 'data-loop': loop.id },
+    el('div.loop-head', null,
+      el('span', { text: `↻ Loop · ${description}` }),
+      el('span.spacer'),
+      el('button.btn.small', {
+        id: 'remove-loop',
+        text: 'Remove loop',
+        onclick: event => { event.stopPropagation(); removeLoop(editor); },
+        onpointerdown: event => event.stopPropagation(),
+      })),
+    lane);
+  frame.addEventListener('click', event => {
+    if (!event.target.closest('.node')) editor.select(loop.id);
+  });
+  return frame;
+}
+
+function renderSelectionBar(editor) {
+  const problem = loopProblem(editor);
+  return el('div.selection-bar', { onpointerdown: event => event.stopPropagation() },
+    el('span', { text: `Đã chọn ${editor.selection.size} khối` }),
+    el('button.btn.small.primary', {
+      id: 'make-loop',
+      text: '↻ Create loop',
+      disabled: Boolean(problem),
+      title: problem || '',
+      onclick: () => makeLoop(editor),
+    }),
+    el('button.btn.small.danger', { text: 'Delete', onclick: () => editor.deleteSelection() }),
+    problem ? el('span.muted', { id: 'loop-problem', text: problem }) : null);
+}
+
+// The same diagram, read-only, showing how far a run has got. stateOf(id) gives a class or null.
+function renderRunDiagram(flow, stateOf) {
+  const item = (step, withArrow) => el('div.item', null,
+    el('div.' + ['node', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-step': step.id },
+      el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) })),
+    withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  return el('div.lane', null, flow.steps.map((step, index) => {
+    if (step.do !== 'loop') return item(step, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop');
+    const description = step.source === 'count' ? `${step.count || 1} lần` : 'mỗi hàng Excel';
+    return el('div.item.block', null, el('div.loop-frame.readonly', null,
+      el('div.loop-head', { text: `↻ Loop · ${description}` }),
+      el('div.lane', null, step.steps.map((child, position) => item(child, position < step.steps.length - 1)))));
+  }));
+}
+
+function selectionIndexes(editor) {
+  return editor.flow.steps
+    .map((step, index) => (editor.selection.has(step.id) ? index : -1))
+    .filter(index => index >= 0);
+}
+
+function loopProblem(editor) {
+  if (findLoop(editor.flow)) return 'Mỗi quy trình chỉ có một vùng lặp.';
+  const indexes = selectionIndexes(editor);
+  if (indexes.length !== editor.selection.size) return 'Chỉ khoanh các khối ngoài vùng lặp.';
+  if (indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return 'Các khối phải liên tiếp nhau.';
+  return '';
+}
+
+function makeLoop(editor) {
+  const problem = loopProblem(editor);
+  if (problem) { toast(problem, 'bad'); return; }
+  const indexes = selectionIndexes(editor);
+  const flow = editor.flow;
+  const children = flow.steps.slice(indexes[0], indexes[indexes.length - 1] + 1);
+  const usesColumn = /\{\{\s*[A-Z]{1,3}\s*\}\}/.test(JSON.stringify(children));
+  const loop = {
+    id: nextStepId(flow), do: 'loop',
+    source: editor.excelPath || flow.excel || usesColumn ? 'excel' : 'count',
+    count: 1, steps: children,
+  };
+  flow.steps.splice(indexes[0], children.length, loop);
+  if (loop.source === 'excel') editor.ensureExcelSettings();
+  editor.select(loop.id);
+  editor.changed();
+}
+
+function removeLoop(editor) {
+  const flow = editor.flow;
+  const loop = findLoop(flow);
+  if (!loop) return;
+  const index = flow.steps.indexOf(loop);
+  flow.steps.splice(index, 1, ...loop.steps);
+  editor.select(null);
+  editor.changed();
+}
+
+// Dragging
+
+function dropPosition(editor, x, y, movingLoopAllowed) {
+  // The innermost lane under the pointer takes the drop, else the main lane.
+  const canvasBox = editor.canvasNode.getBoundingClientRect();
+  if (x < canvasBox.left || x > canvasBox.right || y < canvasBox.top || y > canvasBox.bottom) return null;
+  const hovered = document.elementFromPoint(x, y);
+  const frame = hovered && hovered.closest ? hovered.closest('.loop-frame') : null;
+  const lane = frame && movingLoopAllowed ? frame.querySelector('[data-lane=loop]') : editor.canvasNode.querySelector('[data-lane=top]');
+  if (!lane) return null;
+  const items = Array.from(lane.children).filter(child => child.classList.contains('item'));
+  let index = items.length;
+  for (let position = 0; position < items.length; position++) {
+    const box = items[position].getBoundingClientRect();
+    const before = y < box.top || (y <= box.bottom && x < box.left + box.width / 2);
+    if (before) { index = position; break; }
+  }
+  return { lane: lane.dataset.lane, index, items };
+}
+
+function placeMarker(marker, position) {
+  const { items, index } = position;
+  if (!items.length) {
+    marker.style.display = 'none';
+    return;
+  }
+  marker.style.display = 'block';
+  const anchor = items[Math.min(index, items.length - 1)];
+  const box = anchor.getBoundingClientRect();
+  marker.style.left = (index >= items.length ? box.right + 2 : box.left - 3) + 'px';
+  marker.style.top = box.top + 'px';
+  marker.style.height = Math.max(box.height, 40) + 'px';
+}
+
+function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
+  const editor = runDrag.editor;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let started = false;
+  let ghost = null;
+  let marker = null;
+
+  const move = moveEvent => {
+    if (!started) {
+      if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) return;
+      started = true;
+      ghost = el('div.drag-ghost', { text: label });
+      marker = el('div.drop-marker');
+      document.body.append(ghost, marker);
+      if (onStart) onStart();
+    }
+    ghost.style.left = moveEvent.clientX + 10 + 'px';
+    ghost.style.top = moveEvent.clientY + 8 + 'px';
+    const position = dropPosition(editor, moveEvent.clientX, moveEvent.clientY, allowLoop);
+    if (position) placeMarker(marker, position);
+    else marker.style.display = 'none';
+  };
+  const finish = upEvent => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', finish);
+    document.removeEventListener('pointercancel', cancel);
+    if (ghost) ghost.remove();
+    if (marker) marker.remove();
+    if (onEnd) onEnd();
+    if (!started) { if (onDrop.click) onDrop.click(); return; }
+    const position = dropPosition(editor, upEvent.clientX, upEvent.clientY, allowLoop);
+    if (position) onDrop(position);
+  };
+  const cancel = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', finish);
+    document.removeEventListener('pointercancel', cancel);
+    if (ghost) ghost.remove();
+    if (marker) marker.remove();
+    if (onEnd) onEnd();
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', finish);
+  document.addEventListener('pointercancel', cancel);
+}
+
+function startPaletteDrag(event, editor, kind) {
+  event.preventDefault();
+  runDrag.editor = editor;
+  const drop = position => {
+    const step = editor.makeStep(kind);
+    const list = position.lane === 'loop' ? findLoop(editor.flow).steps : editor.flow.steps;
+    list.splice(position.index, 0, step);
+    editor.select(step.id);
+    editor.changed();
+  };
+  // A plain click appends the block, for people who prefer not to drag.
+  drop.click = () => editor.addStep(kind);
+  runDrag(event, STEP_NAMES[kind], drop, null, null, true);
+}
+
+function startNodeDrag(event, editor, step, node) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  node.focus({ preventScroll: true });
+  runDrag.editor = editor;
+  const drop = position => {
+    const source = listContaining(editor.flow, step.id);
+    if (!source) return;
+    const from = source.indexOf(step);
+    const target = position.lane === 'loop' ? findLoop(editor.flow).steps : editor.flow.steps;
+    let index = position.index;
+    source.splice(from, 1);
+    if (source === target && from < index) index -= 1;
+    target.splice(index, 0, step);
+    editor.select(step.id);
+    editor.changed();
+  };
+  drop.click = () => editor.select(step.id);
+  runDrag(event, STEP_NAMES[step.do], drop, () => node.classList.add('dragging'), () => node.classList.remove('dragging'), true);
+}
+
+// Drawing a box over blocks selects them, ready to become the loop.
+function startLasso(event, editor) {
+  if (event.button !== 0 || event.target.closest('.node, button, .selection-bar, .loop-head')) return;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let box = null;
+  const move = moveEvent => {
+    if (!box && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) return;
+    if (!box) {
+      box = el('div.lasso');
+      document.body.append(box);
+    }
+    box.style.left = Math.min(startX, moveEvent.clientX) + 'px';
+    box.style.top = Math.min(startY, moveEvent.clientY) + 'px';
+    box.style.width = Math.abs(moveEvent.clientX - startX) + 'px';
+    box.style.height = Math.abs(moveEvent.clientY - startY) + 'px';
+  };
+  const up = upEvent => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    if (!box) {
+      if (!event.target.closest('.loop-frame')) editor.select(null);
+      return;
+    }
+    box.remove();
+    const left = Math.min(startX, upEvent.clientX);
+    const right = Math.max(startX, upEvent.clientX);
+    const top = Math.min(startY, upEvent.clientY);
+    const bottom = Math.max(startY, upEvent.clientY);
+    const chosen = Array.from(editor.canvasNode.querySelectorAll('.node')).filter(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.left < right && rect.right > left && rect.top < bottom && rect.bottom > top;
+    }).map(node => node.dataset.step);
+    editor.selectMany(chosen);
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
