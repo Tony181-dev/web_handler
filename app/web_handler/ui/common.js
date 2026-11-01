@@ -25,6 +25,17 @@ function fill(node, ...children) {
   node.replaceChildren(...children.flat(Infinity).filter(child => child !== null && child !== undefined && child !== false));
 }
 
+// English is written in the code. Other languages come from ui/lang/<language>.json.
+const LANGUAGES = [['en', 'English'], ['vi', 'Tiếng Việt']]; // i18n-exempt: each language's own name
+let currentLanguage = 'en';
+let translations = {};
+
+function t(text, values) {
+  let result = translations[text] || text;
+  for (const [name, value] of Object.entries(values || {})) result = result.split(`{${name}}`).join(value);
+  return result;
+}
+
 const READ_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 30000;
 const LONG_REQUEST_TIMEOUT_MS = 180000;
@@ -46,14 +57,14 @@ async function api(method, path, body, options) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = new Error(data.error || `Lỗi ${response.status}`);
+        const error = new Error(data.error || t('Error {status}', { status: response.status }));
         error.fromServer = true;
         throw error;
       }
       return data;
     } catch (error) {
       if (error.fromServer) throw error;
-      lastError = error.name === 'AbortError' ? new Error('App không trả lời kịp.') : new Error('Không kết nối được tới app. Cửa sổ Start.bat còn mở không?');
+      lastError = error.name === 'AbortError' ? new Error(t('The app did not answer in time.')) : new Error(t('Cannot reach the app. Is the Start.bat window still open?'));
     } finally {
       clearTimeout(timer);
     }
@@ -115,7 +126,7 @@ function confirmBox(title, message, label, kind) {
       body: el('p', { text: message }),
       onClose: () => resolve(answer),
       actions: [
-        { label: 'Cancel' },
+        { label: t('Cancel') },
         { label, kind: kind || 'primary', id: 'confirm', onClick: () => { answer = true; } },
       ],
     });
@@ -131,7 +142,7 @@ function promptBox(title, label, initial, hint) {
       title,
       body: el('div.field', null, el('label.field-label', { text: label }), input, hint ? el('div.hint', { text: hint }) : null),
       onClose: () => resolve(answer),
-      actions: [{ label: 'Cancel' }, { label: 'OK', kind: 'primary', id: 'confirm', onClick: () => { answer = input.value.trim(); } }],
+      actions: [{ label: t('Cancel') }, { label: t('OK'), kind: 'primary', id: 'confirm', onClick: () => { answer = input.value.trim(); } }],
     });
     input.addEventListener('keydown', event => { if (event.key === 'Enter') submit(box.close); });
     input.select();
@@ -171,10 +182,61 @@ const STEP_NAMES = {
 };
 const PALETTE = ['goto', 'fill', 'click', 'select', 'check', 'read', 'wait_for', 'wait', 'verify', 'manual_pause'];
 const DEFAULT_WAIT_SECONDS = 3;
+const STEP_HELP = {
+  goto: 'Opens a web address in the browser. The address can be typed in or come from an Excel column.',
+  fill: 'Types a value into a box on the page: fixed text, an Excel column, a secret or a variable.',
+  click: 'Clicks a button or link on the page. Tick the option to wait if the click opens another page.',
+  select: 'Picks an option from a dropdown list by the text it shows.',
+  check: 'Ticks or unticks a checkbox.',
+  read: 'Reads a value from the page and keeps it in a variable or writes it to a column of the result file.',
+  wait_for: 'Waits until an element appears on the page, then goes on. The block fails if it does not appear in time.',
+  wait: 'Pauses for a number of seconds, 3 by default, then goes on to the next block.',
+  verify: 'Checks that the page is as expected, by the value of an element or by the address. The block fails if it is not.',
+  manual_pause: 'Pauses so you can do something by hand in Chrome, such as entering a login code, then click Continue.',
+};
+
+async function loadLanguage() {
+  try {
+    const { language } = await api('GET', '/api/language');
+    if (language !== 'en') translations = await (await fetch(`/ui/lang/${language}.json`)).json();
+    currentLanguage = language;
+  } catch (error) { /* The interface still works in English. */ }
+  document.documentElement.lang = currentLanguage;
+  for (const kind of Object.keys(STEP_NAMES)) STEP_NAMES[kind] = t(STEP_NAMES[kind]);
+}
+
+// A short explanation beside a control, there only while the pointer or keyboard focus is on it.
+let helpNode = null;
+
+function hideHelp() {
+  if (helpNode) helpNode.remove();
+  helpNode = null;
+}
+
+function showHelp(control, text) {
+  hideHelp();
+  const box = control.getBoundingClientRect();
+  helpNode = el('div.tool-help', { id: 'tool-help', role: 'tooltip', text });
+  helpNode.style.left = `${box.right + 8}px`;
+  helpNode.style.top = `${box.top}px`;
+  document.body.append(helpNode);
+  const overflow = helpNode.getBoundingClientRect().bottom - window.innerHeight + 8;
+  if (overflow > 0) helpNode.style.top = `${box.top - overflow}px`;
+}
+
+function attachHelp(control, text) {
+  control.addEventListener('pointerenter', () => showHelp(control, text));
+  control.addEventListener('pointerleave', hideHelp);
+  control.addEventListener('focus', () => showHelp(control, text));
+  control.addEventListener('blur', hideHelp);
+  // Out of the way as soon as the control is pressed or dragged.
+  control.addEventListener('pointerdown', hideHelp);
+  return control;
+}
 
 function statusBadge(status) {
-  const kind = { 'OK': 'ok', 'Lỗi': 'bad', 'Bỏ qua': 'neutral', 'Chưa rõ': 'unknown' }[status] || 'neutral';
-  return el('span.badge.' + kind, { text: status });
+  const kind = { OK: 'ok', Failed: 'bad', Skipped: 'neutral', Unclear: 'unknown' }[status] || 'neutral';
+  return el('span.badge.' + kind, { text: t(status) });
 }
 
 function columnLetters(count) {

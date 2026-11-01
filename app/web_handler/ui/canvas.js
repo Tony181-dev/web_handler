@@ -30,7 +30,7 @@ function stopColumn(flow) {
 }
 
 function runsUntilText(column) {
-  return `Chạy tới hết cột${column ? ' ' + column : ''} (gặp ô trống)`;
+  return column ? t('Runs until column {column} ends (first empty cell)', { column }) : t('Runs until the column ends (first empty cell)');
 }
 
 function stepSummary(step) {
@@ -38,14 +38,14 @@ function stepSummary(step) {
   switch (step.do) {
     case 'goto': {
       const [source, name] = sourceOf(step.url);
-      if (source === 'excel') return `Excel, cột ${name}`;
-      return step.url || step.note || 'chưa có link';
+      if (source === 'excel') return t('Excel, column {name}', { name });
+      return step.url || step.note || t('no link yet');
     }
-    case 'verify': return step.url_not_contains ? `URL khác ${step.url_not_contains}` : step.url_contains ? `URL có ${step.url_contains}` : (target || 'chưa có điều kiện');
-    case 'manual_pause': return step.message || 'bấm Continue';
-    case 'wait': return `${step.seconds} giây`;
+    case 'verify': return step.url_not_contains ? t('URL without {text}', { text: step.url_not_contains }) : step.url_contains ? t('URL with {text}', { text: step.url_contains }) : (target || t('no condition yet'));
+    case 'manual_pause': return step.message || t('click Continue');
+    case 'wait': return t('{seconds} s', { seconds: step.seconds });
     // A template's blank block says what it is for.
-    default: return target || step.note || 'chưa có phần tử';
+    default: return target || step.note || t('no element yet');
   }
 }
 
@@ -118,8 +118,8 @@ function renderCanvas(editor) {
 
   if (!flow.steps.length) {
     canvas.append(el('div.canvas-empty', null,
-      el('h2', { text: 'Kéo khối từ bên trái vào đây' }),
-      el('p', { text: 'Hoặc bấm Record để tool tạo các bước khi bạn làm tay một lượt.', style: 'margin-top:6px' })));
+      el('h2', { text: t('Drag blocks here from the left') }),
+      el('p', { text: t('Or click Record, and the tool creates the blocks as you do the work once by hand.'), style: 'margin-top:6px' })));
   }
   const lane = el('div.lane', { 'data-lane': 'top' });
   flow.steps.forEach((step, index) => {
@@ -159,15 +159,15 @@ function renderLoop(editor, loop) {
   const selected = editor.selection.has(loop.id);
   const lane = el('div.lane', { 'data-lane': 'loop' });
   loop.steps.forEach((step, index) => lane.append(renderItem(editor, step, index, index < loop.steps.length - 1)));
-  if (!loop.steps.length) lane.append(el('div.loop-empty', { text: 'Thả khối vào đây để lặp lại chúng.' }));
-  const description = loop.source === 'count' ? `${loop.count || 1} lần` : 'mỗi hàng Excel';
+  if (!loop.steps.length) lane.append(el('div.loop-empty', { text: t('Drop blocks here to repeat them.') }));
+  const description = loop.source === 'count' ? t('{count} time(s)', { count: loop.count || 1 }) : t('each Excel row');
   const frame = el('div.loop-frame' + (selected ? '.selected' : ''), { 'data-loop': loop.id },
     el('div.loop-head', null,
-      el('span', { text: `↻ Loop · ${description}` }),
+      el('span', { text: `↻ ${STEP_NAMES.loop} · ${description}` }),
       el('span.spacer'),
       el('button.btn.small', {
         id: 'remove-loop',
-        text: 'Remove loop',
+        text: t('Remove loop'),
         onclick: event => { event.stopPropagation(); removeLoop(editor); },
         onpointerdown: event => event.stopPropagation(),
       })),
@@ -181,15 +181,15 @@ function renderLoop(editor, loop) {
 function renderSelectionBar(editor) {
   const problem = loopProblem(editor);
   return el('div.selection-bar', { onpointerdown: event => event.stopPropagation() },
-    el('span', { text: `Đã chọn ${editor.selection.size} khối` }),
+    el('span', { text: t('Selected blocks: {count}', { count: editor.selection.size }) }),
     el('button.btn.small.primary', {
       id: 'make-loop',
-      text: '↻ Create loop',
+      text: t('↻ Create loop'),
       disabled: Boolean(problem),
       title: problem || '',
       onclick: () => makeLoop(editor),
     }),
-    el('button.btn.small.danger', { text: 'Delete', onclick: () => editor.deleteSelection() }),
+    el('button.btn.small.danger', { text: t('Delete'), onclick: () => editor.deleteSelection() }),
     problem ? el('span.muted', { id: 'loop-problem', text: problem }) : null);
 }
 
@@ -201,9 +201,9 @@ function renderRunDiagram(flow, stateOf) {
     withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
   return el('div.lane', null, flow.steps.map((step, index) => {
     if (step.do !== 'loop') return item(step, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop');
-    const description = step.source === 'count' ? `${step.count || 1} lần` : 'mỗi hàng Excel';
+    const description = step.source === 'count' ? t('{count} time(s)', { count: step.count || 1 }) : t('each Excel row');
     return el('div.item.block', null, el('div.loop-frame.readonly', null,
-      el('div.loop-head', { text: `↻ Loop · ${description}` }),
+      el('div.loop-head', { text: `↻ ${STEP_NAMES.loop} · ${description}` }),
       el('div.lane', null, step.steps.map((child, position) => item(child, position < step.steps.length - 1)))));
   }));
 }
@@ -215,10 +215,10 @@ function selectionIndexes(editor) {
 }
 
 function loopProblem(editor) {
-  if (findLoop(editor.flow)) return 'Mỗi quy trình chỉ có một vùng lặp.';
+  if (findLoop(editor.flow)) return t('A flow can have only one loop.');
   const indexes = selectionIndexes(editor);
-  if (indexes.length !== editor.selection.size) return 'Chỉ khoanh các khối ngoài vùng lặp.';
-  if (indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return 'Các khối phải liên tiếp nhau.';
+  if (indexes.length !== editor.selection.size) return t('Select only blocks outside the loop.');
+  if (indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return t('The blocks must be next to each other.');
   return '';
 }
 

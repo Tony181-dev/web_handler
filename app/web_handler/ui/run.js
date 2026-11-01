@@ -23,24 +23,24 @@ async function runWithConfirmation(flowId, excelPath, mode, options) {
     check.changed ? el('li.warning', { text: check.changed }) : null);
   const trial = mode === 'trial';
   const facts = blocked ? null : el('dl.facts', null,
-    el('dt', { text: 'Số lần chạy' }), el('dd', { id: 'confirm-total', text: String(check.total) + (check.skipped ? ` (bỏ qua ${check.skipped} hàng thiếu dữ liệu)` : '') }),
-    check.stop_column !== undefined ? el('dt', { text: 'Dừng khi' }) : null,
+    el('dt', { text: t('Number of runs') }), el('dd', { id: 'confirm-total', text: String(check.total) + (check.skipped ? t(' ({count} row(s) with missing data skipped)', { count: check.skipped }) : '') }),
+    check.stop_column !== undefined ? el('dt', { text: t('Stops when') }) : null,
     check.stop_column !== undefined ? el('dd', { id: 'confirm-stop', text: runsUntilText(check.stop_column) }) : null,
-    el('dt', { text: 'Tên miền truy cập' }), el('dd', { id: 'confirm-hosts', text: check.hosts.join(', ') || 'Không rõ' }),
-    el('dt', { text: 'Cột sẽ ghi' }), el('dd', { text: check.columns.length ? check.columns.join(', ') + ' (trong file kết quả)' : 'Không có' }));
-  const title = blocked ? 'Chưa chạy được' : (trial ? 'Chạy thử 1 lần' : 'Xác nhận chạy');
+    el('dt', { text: t('Sites reached') }), el('dd', { id: 'confirm-hosts', text: check.hosts.join(', ') || t('Unknown') }),
+    el('dt', { text: t('Columns written') }), el('dd', { text: check.columns.length ? check.columns.join(', ') + t(' (in the result file)') : t('None') }));
+  const title = blocked ? t('Cannot run yet') : (trial ? t('Run one trial') : t('Confirm the run'));
   openModal({
     title,
     body: el('div', null,
-      blocked ? el('p', { text: 'Hãy sửa các lỗi sau trước khi chạy:', style: 'margin-bottom:6px' }) : null,
-      !blocked && trial ? el('div.banner.warn', { text: 'Đây là thao tác ghi thật: các bước sẽ chạy thật trên trang web cho một hàng.' }) : null,
-      !blocked && !trial ? el('p', { text: 'Tool sẽ ghi thật lên trang web. File Excel gốc giữ nguyên.', style: 'margin-bottom:6px' }) : null,
+      blocked ? el('p', { text: t('Fix these problems before running:'), style: 'margin-bottom:6px' }) : null,
+      !blocked && trial ? el('div.banner.warn', { text: t('This writes for real: the blocks really run on the website for one row.') }) : null,
+      !blocked && !trial ? el('p', { text: t('The tool will really write to the website. The original Excel file stays as it is.'), style: 'margin-bottom:6px' }) : null,
       facts,
       check.errors.length || check.warnings.length || check.changed ? issues : null),
-    actions: blocked ? [{ label: 'Close', id: 'close' }] : [
-      { label: 'Cancel', id: 'cancel' },
+    actions: blocked ? [{ label: t('Close'), id: 'close' }] : [
+      { label: t('Cancel'), id: 'cancel' },
       {
-        label: trial ? 'Run once' : 'Run', kind: 'primary', id: 'confirm-run',
+        label: trial ? t('Run once') : t('Run'), kind: 'primary', id: 'confirm-run',
         onClick: async () => {
           try {
             const started = await api('POST', '/api/runs', {
@@ -56,12 +56,12 @@ async function runWithConfirmation(flowId, excelPath, mode, options) {
 }
 
 const OUTCOME_TEXT = {
-  finished: 'Đã chạy xong.',
-  stopped: 'Đã dừng theo yêu cầu.',
-  failed: 'Đã dừng vì lỗi.',
-  browser_closed: 'Đã dừng vì cửa sổ Chrome bị đóng.',
-  after_loop_failed: 'Các hàng đã chạy xong, nhưng bước sau vùng lặp bị lỗi.',
-  crashed: 'Tiến trình chạy dừng đột ngột.',
+  finished: 'Finished.',
+  stopped: 'Stopped as requested.',
+  failed: 'Stopped by an error.',
+  browser_closed: 'Stopped because the Chrome window was closed.',
+  after_loop_failed: 'The rows finished, but a block after the loop failed.',
+  crashed: 'The run stopped suddenly.',
 };
 
 const FAILED_BLOCK_HOLD_MS = 1500;
@@ -70,7 +70,7 @@ async function renderRun(runId) {
   const view = document.getElementById('view');
   setTopbarTitle(null);
   const state = {
-    total: 0, rows: new Map(), counts: { 'OK': 0, 'Lỗi': 0, 'Bỏ qua': 0, 'Chưa rõ': 0 },
+    total: 0, rows: new Map(), counts: { OK: 0, Failed: 0, Skipped: 0, Unclear: 0 },
     finished: null, paused: null, current: '', logs: [], summary: null,
     lit: new Set(), activeStep: null, failedStep: null, flash: null, wait: null,
   };
@@ -101,47 +101,47 @@ async function renderRun(runId) {
     if (!state.wait) return;
     const left = Math.max(0, Math.ceil((state.wait.until - Date.now()) / 1000));
     const current = document.getElementById('run-current');
-    if (current) current.textContent = `${state.current}, còn ${left} giây`;
+    if (current) current.textContent = t('{step}, {seconds} s left', { step: state.current, seconds: left });
     const summaryNode = page.querySelector(`#run-flow .node[data-step="${state.wait.step}"] span`);
-    if (summaryNode) summaryNode.textContent = `còn ${left} giây`;
+    if (summaryNode) summaryNode.textContent = t('{seconds} s left', { seconds: left });
   };
 
   const draw = () => {
-    const done = state.counts['OK'] + state.counts['Lỗi'] + state.counts['Bỏ qua'] + state.counts['Chưa rõ'];
+    const done = state.counts.OK + state.counts.Failed + state.counts.Skipped + state.counts.Unclear;
     const percent = state.total ? Math.min(100, Math.round((done / state.total) * 100)) : (state.finished ? 100 : 0);
     const finished = state.finished;
     const rows = [...state.rows.values()].sort((a, b) => a.row - b.row);
-    const headline = finished ? (OUTCOME_TEXT[finished.outcome] || finished.outcome) : (state.paused ? 'Đang chờ bạn quyết định' : 'Đang chạy...');
+    const headline = finished ? t(OUTCOME_TEXT[finished.outcome] || finished.outcome) : (state.paused ? t('Waiting for your decision') : t('Running...'));
     fill(page,
       el('div.page-head', null,
         el('h1', { id: 'run-headline', text: headline }),
         el('span.spacer'),
-        !finished ? el('button.btn.danger', { id: 'run-stop', text: 'Stop after this row', onclick: () => command('stop') }) : null,
-        el('a.btn', { href: '#/flow/' + summary.flow_id, text: 'Back to flow' })),
+        !finished ? el('button.btn.danger', { id: 'run-stop', text: t('Stop after this row'), onclick: () => command('stop') }) : null,
+        el('a.btn', { href: '#/flow/' + summary.flow_id, text: t('Back to flow') })),
       el('p.muted', { text: summary.flow_name, style: 'margin:-10px 0 14px' }),
       state.paused ? el('div.pause-box', { id: 'pause-box' },
         el('p', { text: state.paused, style: 'margin-bottom:8px' }),
         el('div.row', null,
-          el('button.btn.primary', { id: 'run-continue', text: 'Continue', onclick: () => command('continue') }),
-          el('button.btn', { id: 'run-abort', text: 'Stop', onclick: () => command('stop') }))) : null,
+          el('button.btn.primary', { id: 'run-continue', text: t('Continue'), onclick: () => command('continue') }),
+          el('button.btn', { id: 'run-abort', text: t('Stop'), onclick: () => command('stop') }))) : null,
       finished && finished.message ? el('div.banner.' + (finished.outcome === 'finished' ? 'ok' : 'bad'), { id: 'run-message', text: finished.message }) : null,
       el('div.card.card-pad', { style: 'margin-bottom:14px' },
-        el('div.stat-row', { id: 'run-counts' }, ['OK', 'Lỗi', 'Bỏ qua', 'Chưa rõ'].map(status => el('span.row', { style: 'gap:5px' },
+        el('div.stat-row', { id: 'run-counts' }, ['OK', 'Failed', 'Skipped', 'Unclear'].map(status => el('span.row', { style: 'gap:5px' },
           statusBadge(status), el('b', { 'data-count': status, text: String(state.counts[status]) })))),
         el('div.progress', null, el('div', { style: `width:${percent}%` })),
-        el('div.muted', { id: 'run-current', text: finished ? `${done}/${state.total || done} lượt` : (state.current || 'Đang mở trình duyệt...') }),
+        el('div.muted', { id: 'run-current', text: finished ? t('{done}/{total} done', { done, total: state.total || done }) : (state.current || t('Opening the browser...')) }),
         finished ? finishedActions(runId, summary, state, finished) : null),
       flow ? el('div.card.card-pad', { id: 'run-flow', style: 'margin-bottom:14px' }, renderRunDiagram(flow, stepState)) : null,
       rows.length ? el('div.card', { style: 'margin-bottom:14px;overflow:auto' }, el('table.data', { id: 'run-rows' },
-        el('tr', null, el('th', { text: summary.excel_path ? 'Hàng' : 'Lần' }), el('th', { text: 'Trạng thái' }), el('th', { text: 'Chi tiết' })),
+        el('tr', null, el('th', { text: summary.excel_path ? t('Row') : t('Time') }), el('th', { text: t('Status') }), el('th', { text: t('Details') })),
         rows.map(row => el('tr', { 'data-row': row.row },
           el('td', { text: String(row.row) }),
           el('td', null, statusBadge(row.status)),
           el('td', null,
             el('span', { text: row.message || '', style: 'overflow-wrap:anywhere' }),
             row.screenshot ? el('details', null,
-              el('summary', { text: 'View screenshot', style: 'cursor:pointer;color:var(--accent-text)' }),
-              el('img.shot', { src: `/api/runs/${runId}/files/${row.screenshot}`, alt: 'Ảnh chụp màn hình lúc lỗi', loading: 'lazy' })) : null))))) : null,
+              el('summary', { text: t('View screenshot'), style: 'cursor:pointer;color:var(--accent-text)' }),
+              el('img.shot', { src: `/api/runs/${runId}/files/${row.screenshot}`, alt: t('Screenshot at the time of the error'), loading: 'lazy' })) : null))))) : null,
       state.logs.length ? el('div.log', { id: 'run-log' }, state.logs.map(item => el('div.' + item.level, { text: item.text }))) : null);
     showCountdown();
   };
@@ -157,12 +157,12 @@ async function renderRun(runId) {
       case 'started': state.total = event.total; break;
       case 'waiting': state.wait = { step: event.step, until: Date.now() + event.seconds * 1000 }; break;
       case 'step':
-        state.current = (event.row ? `Hàng ${event.row}: ` : '') + event.label;
+        state.current = (event.row ? t('Row {row}: ', { row: event.row }) : '') + event.label;
         state.lit.add(event.step);
         state.activeStep = event.step;
         break;
       case 'row_start':
-        state.current = `Hàng ${event.row}`;
+        state.current = t('Row {row}', { row: event.row });
         // The next row must not start before anyone could see which block just failed.
         if (state.failedStep) {
           state.flash = { id: state.failedStep, until: Date.now() + FAILED_BLOCK_HOLD_MS };
@@ -174,7 +174,7 @@ async function renderRun(runId) {
       case 'row_done':
         state.rows.set(event.row, event);
         state.counts[event.status] = (state.counts[event.status] || 0) + 1;
-        if (event.status === 'Lỗi') state.failedStep = state.activeStep;
+        if (event.status === 'Failed') state.failedStep = state.activeStep;
         else if (event.status === 'OK') resetLoopBlocks();
         break;
       case 'paused': state.paused = event.reason; break;
@@ -234,8 +234,8 @@ async function renderRun(runId) {
 }
 
 function finishedActions(runId, summary, state, finished) {
-  const anyLeft = state.counts['Lỗi'] > 0;
-  const unknown = state.counts['Chưa rõ'] > 0;
+  const anyLeft = state.counts.Failed > 0;
+  const unknown = state.counts.Unclear > 0;
   const incomplete = ['stopped', 'crashed', 'browser_closed'].includes(finished.outcome);
   const again = (mode, includeUnknown) => () => runWithConfirmation(summary.flow_id, summary.excel_path, mode, {
     previousRun: runId, includeUnknown,
@@ -243,13 +243,13 @@ function finishedActions(runId, summary, state, finished) {
   return el('div.row.wrap', { style: 'margin-top:12px' },
     finished.result_file ? el('button.btn.primary', {
       id: 'open-result',
-      text: 'Open result file',
+      text: t('Open result file'),
       onclick: async () => {
         try { await api('POST', `/api/runs/${runId}/open`, {}); } catch (error) { showError(error); }
       },
     }) : null,
     finished.result_file ? el('span.muted.mono', { id: 'result-file', text: finished.result_file, style: 'overflow-wrap:anywhere' }) : null,
-    incomplete && summary.excel_path ? el('button.btn', { id: 'run-resume', text: 'Resume', onclick: again('resume', false) }) : null,
-    anyLeft && summary.excel_path ? el('button.btn', { id: 'run-retry', text: 'Retry failed rows', onclick: again('retry', false) }) : null,
-    unknown && summary.excel_path ? el('button.btn', { id: 'run-unknown', text: 'Retry failed and unclear rows', title: 'Chạy lại cả hàng Lỗi và hàng Chưa rõ', onclick: again('retry', true) }) : null);
+    incomplete && summary.excel_path ? el('button.btn', { id: 'run-resume', text: t('Resume'), onclick: again('resume', false) }) : null,
+    anyLeft && summary.excel_path ? el('button.btn', { id: 'run-retry', text: t('Retry failed rows'), onclick: again('retry', false) }) : null,
+    unknown && summary.excel_path ? el('button.btn', { id: 'run-unknown', text: t('Retry failed and unclear rows'), title: t('Runs both the Failed and the Unclear rows again'), onclick: again('retry', true) }) : null);
 }

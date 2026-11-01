@@ -24,6 +24,7 @@ robocopy "%SOURCE%offline" "%TARGET%\offline" /MIR /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto failed
 copy /y "%SOURCE%Start.bat" "%TARGET%\Start.bat" >nul || goto failed
 copy /y "%SOURCE%README.txt" "%TARGET%\README.txt" >nul || goto failed
+copy /y "%SOURCE%README.vi.txt" "%TARGET%\README.vi.txt" >nul || goto failed
 
 echo Installing libraries. This takes a few minutes...
 call "%TARGET%\Start.bat" --install

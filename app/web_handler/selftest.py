@@ -2,10 +2,11 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import secrets
 import threading
+from .i18n import t
 
 PAGE = (
     "<!doctype html><meta charset='utf-8'><title>Web Handler Test</title>"
-    "<input id='field'><button id='go'>Bấm</button>"
+    "<input id='field'><button id='go'>Go</button>"
 )
 
 
@@ -49,10 +50,10 @@ def test_browser():
         try:
             page = browser.new_page()
             page.goto(site.url)
-            page.fill("#field", "Xin chào")
-            if page.input_value("#field") != "Xin chào":
-                raise RuntimeError("Giá trị đã điền không khớp.")
-            return f"Trình duyệt {browser.version}: mở trang, điền và đọc lại được."
+            page.fill("#field", "Xin ch\u00e0o")
+            if page.input_value("#field") != "Xin ch\u00e0o":
+                raise RuntimeError(t("The value filled in does not match."))
+            return t("Browser {version}: can open a page, fill it in and read it back.", version=browser.version)
         finally:
             browser.close()
 
@@ -79,8 +80,8 @@ def test_recording():
         finally:
             browser.close()
     if received != ["go"]:
-        raise RuntimeError(f"Không nhận được click: {received!r}")
-    return "Chèn script và nhận được click."
+        raise RuntimeError(t("The click was not received: {received}", received=repr(received)))
+    return t("Can add the script and receive a click.")
 
 
 def test_credentials():
@@ -91,13 +92,13 @@ def test_credentials():
     try:
         keyring.set_password(service, "selftest", value)
         if keyring.get_password(service, "selftest") != value:
-            raise RuntimeError("Giá trị đọc lại không khớp.")
+            raise RuntimeError(t("The value read back does not match."))
     finally:
         try:
             keyring.delete_password(service, "selftest")
         except keyring.errors.PasswordDeleteError:
             pass
-    return "Ghi, đọc và xóa khóa thử được."
+    return t("Can write, read and delete a test key.")
 
 
 TESTS = {"browser": test_browser, "recording": test_recording, "credentials": test_credentials}

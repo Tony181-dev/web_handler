@@ -5,6 +5,7 @@ import time
 
 from . import paths, setup_checks
 from .browser_errors import BrowserClosed, ElementError
+from .i18n import t
 
 CLOSED_HINTS = ("has been closed", "Target closed", "Browser closed", "Connection closed")
 TRIAL_TIMEOUT_MS = 3000
@@ -22,7 +23,7 @@ def launch_options():
         return options
     chromium = setup_checks.find_bundled_chromium()
     if chromium is None:
-        raise RuntimeError("Không tìm thấy Chrome hay Chromium. Hãy mở màn hình Setup.")
+        raise RuntimeError(t("Neither Chrome nor Chromium was found. Open the Setup screen."))
     options["executable_path"] = str(chromium)
     return options
 
@@ -47,8 +48,10 @@ class ChromeDriver:
         except Exception as error:
             self._stop_playwright()
             raise RuntimeError(
-                "Không mở được trình duyệt. Có thể một cửa sổ khác của app đang dùng nó. "
-                f"Chi tiết: {str(error).splitlines()[0]}"
+                t(
+                    "Could not open the browser. Another window of the app may be using it. Details: {error}",
+                    error=str(error).splitlines()[0],
+                )
             ) from error
         if on_new_context:
             on_new_context(self.context)
@@ -116,8 +119,8 @@ class ChromeDriver:
                 self._notices.append(f"{primary} → {fallback}")
                 return self._locator(target, fallback)
         if count > 1:
-            raise ElementError(f"Phần tử {primary} khớp {count} chỗ trên trang; tool không đoán.")
-        raise ElementError(f"Không tìm thấy phần tử {primary} sau {timeout} giây.")
+            raise ElementError(t("Element {element} matches {count} places on the page; the tool does not guess.", element=primary, count=count))
+        raise ElementError(t("Element {element} was not found after {seconds} s.", element=primary, seconds=timeout))
 
     def take_fallback_notices(self):
         notices, self._notices = self._notices, []
@@ -151,7 +154,7 @@ class ChromeDriver:
             locator = self._resolve(target, timeout)
             locator.fill(value, timeout=timeout * 1000)
             if self._read(locator, timeout) != value:
-                raise ElementError(f"Ô {target['primary']} không giữ giá trị vừa điền.")
+                raise ElementError(t("Field {element} did not keep the value just filled in.", element=target["primary"]))
 
         self._guard(action)
 
@@ -171,10 +174,13 @@ class ChromeDriver:
                     raise
                 if clicked:
                     raise ElementError(
-                        f"Đã bấm {target['primary']} nhưng trang không chuyển sau {navigation_timeout} giây. "
-                        "Nếu nút này không mở trang khác, hãy bỏ tick Chờ chuyển trang."
+                        t(
+                            "Clicked {element}, but the page did not change after {seconds} s. "
+                            "If this button does not open another page, untick Wait for the page to change.",
+                            element=target["primary"], seconds=navigation_timeout,
+                        )
                     ) from error
-                raise ElementError(f"Không bấm được {target['primary']}: phần tử đang bị ẩn, bị che hoặc bị khóa.") from error
+                raise ElementError(t("Could not click {element}: it is hidden, covered or disabled.", element=target["primary"])) from error
 
         self._guard(action)
 
@@ -232,11 +238,11 @@ class ChromeDriver:
             try:
                 if kind == "fill":
                     if not locator.evaluate(f"el => el.matches('{FILLABLE}')"):
-                        return "Phần tử này không phải ô nhập nên khối Fill không điền được."
+                        return t("This element is not an input, so the Fill block cannot fill it.")
                     if not locator.is_editable(timeout=TRIAL_TIMEOUT_MS):
-                        return "Ô này đang bị khóa nên khối Fill không điền được."
+                        return t("This field is locked, so the Fill block cannot fill it.")
                 elif kind == "select" and not locator.evaluate("el => el.tagName === 'SELECT'"):
-                    return "Phần tử này không phải danh sách chọn nên khối Select không dùng được."
+                    return t("This element is not a dropdown, so the Select block cannot use it.")
                 if kind == "click":
                     locator.click(trial=True, timeout=TRIAL_TIMEOUT_MS)
                 elif kind == "check":
@@ -246,7 +252,7 @@ class ChromeDriver:
             except Exception as error:
                 if self._closed(error):
                     raise
-                return "Phần tử đang bị ẩn, bị che hoặc bị khóa nên khối này chưa thực hiện được."
+                return t("The element is hidden, covered or disabled, so this block cannot act on it yet.")
             return None
 
         return self._guard(action)

@@ -1,5 +1,6 @@
 """Ready-made flows for the New flow dialog. They fit any site: blocks that depend on the page stay blank."""
 from . import flow as flow_module
+from .i18n import t
 
 
 def _element(kind, note, **fields):
@@ -15,17 +16,17 @@ def _login_excel():
     return {
         "excel": _excel("A", "B"),
         "steps": [
-            {"do": "goto", "note": "Link trang đăng nhập", "url": ""},
-            _element("fill", "Ô tài khoản", value="{{secret:tai_khoan}}"),
-            _element("fill", "Ô mật khẩu", value="{{secret:mat_khau}}"),
-            _element("click", "Nút đăng nhập", wait_navigation=True),
+            {"do": "goto", "note": t("Login page link"), "url": ""},
+            _element("fill", t("Username field"), value="{{secret:username}}"),
+            _element("fill", t("Password field"), value="{{secret:password}}"),
+            _element("click", t("Login button"), wait_navigation=True),
             {"do": "verify", "url_not_contains": "/login"},
             {
                 "do": "loop", "source": "excel", "count": 1,
                 "steps": [
                     {"do": "goto", "url": "{{A}}"},
-                    _element("fill", "Ô cần điền", value="{{B}}"),
-                    _element("click", "Nút lưu", wait_navigation=True),
+                    _element("fill", t("Field to fill"), value="{{B}}"),
+                    _element("click", t("Save button"), wait_navigation=True),
                 ],
             },
         ],
@@ -39,8 +40,8 @@ def _read_excel():
             "do": "loop", "source": "excel", "count": 1,
             "steps": [
                 {"do": "goto", "url": "{{A}}"},
-                _element("wait_for", "Phần tử cần đọc"),
-                _element("read", "Phần tử cần đọc", save_to_column="B"),
+                _element("wait_for", t("Element to read")),
+                _element("read", t("Element to read"), save_to_column="B"),
             ],
         }],
     }
@@ -50,11 +51,11 @@ def _repeat_clicks():
     return {
         "excel": None,
         "steps": [
-            {"do": "goto", "note": "Link trang cần thao tác", "url": ""},
+            {"do": "goto", "note": t("Link of the page to work on"), "url": ""},
             {
                 "do": "loop", "source": "count", "count": 3,
                 "steps": [
-                    _element("click", "Nút cần bấm", wait_navigation=False),
+                    _element("click", t("Button to click"), wait_navigation=False),
                     {"do": "wait", "seconds": 3},
                 ],
             },
@@ -65,21 +66,21 @@ def _repeat_clicks():
 TEMPLATES = {
     "login_excel": (
         "Login + Excel rows", _login_excel,
-        "Đăng nhập, rồi mỗi hàng Excel mở link ở cột A, điền nội dung cột B và lưu.",
+        "Logs in, then for each Excel row opens the link in column A, fills in column B and saves.",
     ),
     "read_excel": (
         "Read into Excel", _read_excel,
-        "Mỗi hàng Excel mở link ở cột A, đọc một giá trị trên trang và ghi vào cột B của file kết quả.",
+        "For each Excel row, opens the link in column A, reads a value on the page and writes it to column B of the result file.",
     ),
     "repeat_clicks": (
         "Repeat clicks", _repeat_clicks,
-        "Mở một trang, rồi bấm một nút 3 lần, mỗi lần cách nhau 3 giây. Không cần Excel.",
+        "Opens a page, then clicks a button 3 times, 3 seconds apart. No Excel needed.",
     ),
 }
 
 
 def catalog():
-    return [{"id": key, "label": label, "hint": hint} for key, (label, _, hint) in TEMPLATES.items()]
+    return [{"id": key, "label": t(label), "hint": t(hint)} for key, (label, _, hint) in TEMPLATES.items()]
 
 
 def _assign_ids(steps, numbers):
@@ -90,8 +91,8 @@ def _assign_ids(steps, numbers):
 
 def build(template_id, name=None):
     if template_id not in TEMPLATES:
-        raise ValueError("Không có mẫu quy trình này.")
+        raise ValueError(t("There is no such flow template."))
     label, make, _ = TEMPLATES[template_id]
-    flow = {**flow_module.new_flow(name or label), **make()}
+    flow = {**flow_module.new_flow(name or t(label)), **make()}
     _assign_ids(flow["steps"], iter(range(1, 1000)))
     return flow

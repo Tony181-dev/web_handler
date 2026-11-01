@@ -27,12 +27,12 @@ function valueField(editor, step, key, label, options) {
   const memoKey = `${step.id}.${key}`;
   const [found, name] = sourceOf(step[key]);
   const mode = step[key] ? found : (editor.sourceModes[memoKey] || 'text');
-  const modes = [['text', 'Text'], ['excel', 'Excel']];
+  const modes = [['text', t('Text')], ['excel', t('Excel')]];
   if (key !== 'url') {
-    modes.push(['secret', 'Secret']);
-    if (mode === 'variable' || editor.variableNames().length) modes.push(['variable', 'Variable']);
+    modes.push(['secret', t('Secret')]);
+    if (mode === 'variable' || editor.variableNames().length) modes.push(['variable', t('Variable')]);
   }
-  const tabs = el('div.tabs', { role: 'tablist', 'aria-label': 'Nguồn dữ liệu' }, modes.map(([value, text]) => el('button', {
+  const tabs = el('div.tabs', { role: 'tablist', 'aria-label': t('Data source') }, modes.map(([value, text]) => el('button', {
     class: mode === value ? 'on' : null,
     role: 'tab',
     'data-mode': value,
@@ -58,7 +58,7 @@ function textPane(editor, step, key, settings) {
     type: 'text',
     class: key === 'url' ? 'mono' : null,
     value: step[key] || '',
-    placeholder: settings.placeholder || 'Nhập nội dung cố định',
+    placeholder: settings.placeholder || t('Type fixed text'),
     'data-field': key,
     oninput: () => {
       step[key] = input.value;
@@ -75,15 +75,15 @@ function columnPane(editor, step, key, name, memoKey) {
   const showPreview = letter => {
     const column = editor.currentSheet() && columns.find(item => item.column === letter);
     if (column) {
-      const sample = column.sample ? `. Hàng đầu: ${column.sample}` : '';
-      preview.textContent = `Cột ${letter}: ${column.header || 'không có tiêu đề'}${sample}`;
+      const sample = column.sample ? t('. First row: {value}', { value: column.sample }) : '';
+      preview.textContent = t('Column {column}: {header}', { column: letter, header: column.header || t('no heading') }) + sample;
     } else {
-      preview.textContent = 'Nhập chữ cái của cột, ví dụ C là cột C. Mỗi hàng Excel dùng giá trị ở cột này.';
+      preview.textContent = t('Type the column letter, for example C is column C. Each Excel row uses the value in this column.');
     }
   };
   const input = el('input', {
     type: 'text', class: 'mono', value: name || '', maxlength: '3', placeholder: 'C',
-    list: listId, 'data-column': key, 'aria-label': 'Cột Excel',
+    list: listId, 'data-column': key, 'aria-label': t('Excel column'),
     oninput: () => {
       const letter = input.value.trim().toUpperCase();
       input.value = letter;
@@ -101,7 +101,7 @@ function columnPane(editor, step, key, name, memoKey) {
     preview,
     usable ? null : el('div.banner.warn', {
       id: 'needs-loop',
-      text: 'Khối này chưa nằm trong vùng lặp theo Excel nên chưa có dữ liệu. Kéo chuột khoanh các khối cần lặp rồi bấm Create loop, hoặc kéo khối vào vùng lặp.',
+      text: t('This block is not inside a loop over Excel rows, so it has no data yet. Drag a box around the blocks to repeat and click Create loop, or drag this block into the loop.'),
       style: 'margin:8px 0 0',
     }));
 }
@@ -110,7 +110,7 @@ function namePane(editor, step, key, kind, name, names) {
   const known = name && !names.includes(name) ? [...names, name] : names;
   const select = el('select', {
     'data-name': key,
-    'aria-label': kind === 'secret' ? 'Tên bí mật' : 'Tên biến',
+    'aria-label': kind === 'secret' ? t('Secret name') : t('Variable name'),
     onchange: () => {
       if (select.value === '__manage') {
         select.value = name || '';
@@ -121,9 +121,9 @@ function namePane(editor, step, key, kind, name, names) {
       editor.changed();
     },
   },
-  el('option', { value: '', text: 'Chọn...', selected: !name }),
+  el('option', { value: '', text: t('Choose...'), selected: !name }),
   known.map(item => el('option', { value: item, text: item, selected: item === name })),
-  kind === 'secret' ? el('option', { value: '__manage', text: 'Quản lý bí mật...' }) : null);
+  kind === 'secret' ? el('option', { value: '__manage', text: t('Manage secrets...') }) : null);
   return select;
 }
 
@@ -132,25 +132,25 @@ function renderProperties(editor) {
   const scroll = panel.scrollTop;
   panel.replaceChildren();
   if (editor.selection.size > 1) {
-    panel.append(el('p.muted', { text: 'Đang chọn nhiều khối. Chọn một khối để sửa, hoặc tạo vùng lặp từ các khối đã khoanh.' }));
+    panel.append(el('p.muted', { text: t('Several blocks are selected. Select one to edit it, or create a loop from the selected blocks.') }));
     return;
   }
   const id = [...editor.selection][0];
   const step = id ? findStep(editor.flow, id) : null;
   if (!step) {
     panel.append(
-      el('p.section-label', { text: 'Cách dùng' }),
+      el('p.section-label', { text: t('How to use') }),
       el('ol', { style: 'margin:0;padding-left:18px;line-height:1.7' },
-        el('li', { text: 'Kéo khối từ bên trái, hoặc bấm Record.' }),
-        el('li', { text: 'Chọn khối rồi dán HTML phần tử vào đây.' }),
-        el('li', { text: 'Kéo chuột khoanh các khối cần lặp, rồi bấm Create loop.' }),
-        el('li', { text: 'Bấm Select Excel, chọn dải hàng ở thanh dưới, rồi bấm Run.' })));
+        el('li', { text: t('Drag blocks from the left, or click Record.') }),
+        el('li', { text: t('Select a block and paste the HTML of the element here.') }),
+        el('li', { text: t('Drag a box around the blocks to repeat, then click Create loop.') }),
+        el('li', { text: t('Click Select Excel, choose the rows in the bar below, then click Run.') })));
     return;
   }
   panel.append(el('div.row', { style: 'margin-bottom:12px' },
     el('h2', { text: STEP_NAMES[step.do] }),
     el('span.spacer'),
-    step.do === 'loop' ? null : el('button.btn.small.danger', { id: 'delete-step', text: 'Delete block', onclick: () => editor.deleteSelection() })));
+    step.do === 'loop' ? null : el('button.btn.small.danger', { id: 'delete-step', text: t('Delete block'), onclick: () => editor.deleteSelection() })));
   const render = STEP_FORMS[step.do];
   if (render) render(panel, editor, step);
   panel.scrollTop = scroll;
@@ -158,15 +158,15 @@ function renderProperties(editor) {
 
 const STEP_FORMS = {
   goto(panel, editor, step) {
-    panel.append(valueField(editor, step, 'url', 'Link', {
+    panel.append(valueField(editor, step, 'url', t('Link'), {
       placeholder: 'https://...',
-      hint: 'Link có phần thay đổi theo Excel thì ghép như sau: https://site/{{A}}/edit.',
+      hint: t('If part of the link changes with Excel, write it like this: https://site/{{A}}/edit.'),
     }));
   },
   fill(panel, editor, step) {
     panel.append(targetEditor(editor, step));
     panel.append(el('div.divider'));
-    panel.append(valueField(editor, step, 'value', 'Giá trị cần điền'));
+    panel.append(valueField(editor, step, 'value', t('Value to fill in')));
   },
   click(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -176,13 +176,13 @@ const STEP_FORMS = {
         type: 'checkbox', id: 'wait-navigation', checked: step.wait_navigation,
         onchange: event => { step.wait_navigation = event.target.checked; editor.changedQuietly(); },
       }),
-      'Chờ chuyển trang sau khi bấm'));
-    panel.append(el('div.hint', { text: 'Bật khi nút này lưu hoặc mở trang khác, để bước sau không chạy quá sớm.' }));
+      t('Wait for the page to change after clicking')));
+    panel.append(el('div.hint', { text: t('Turn this on when the button saves or opens another page, so the next block does not run too early.') }));
   },
   select(panel, editor, step) {
     panel.append(targetEditor(editor, step));
     panel.append(el('div.divider'));
-    panel.append(valueField(editor, step, 'value', 'Lựa chọn (đúng chữ hiển thị)'));
+    panel.append(valueField(editor, step, 'value', t('Option (exactly the text it shows)')));
   },
   check(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -192,7 +192,7 @@ const STEP_FORMS = {
         type: 'checkbox', checked: step.checked !== false,
         onchange: event => { step.checked = event.target.checked; editor.changedQuietly(); },
       }),
-      'Tick ô này (bỏ chọn để bỏ tick)'));
+      t('Tick this box (turn off to untick it)')));
   },
   read(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -203,16 +203,16 @@ const STEP_FORMS = {
       holder.replaceChildren();
       if (current === 'column') {
         const input = el('input', {
-          type: 'text', value: step.save_to_column || '', placeholder: 'vd: E', 'data-field': 'save_to_column',
+          type: 'text', value: step.save_to_column || '', placeholder: t('e.g. E'), 'data-field': 'save_to_column',
           oninput: () => { step.save_to_column = input.value.trim().toUpperCase(); step.save_to_var = null; editor.changedQuietly(); },
         });
-        holder.append(field('Ghi vào cột của file kết quả', input));
+        holder.append(field(t('Write to this column of the result file'), input));
       } else {
         const input = el('input', {
-          type: 'text', value: step.save_to_var || '', placeholder: 'vd: ten_cu', 'data-field': 'save_to_var',
+          type: 'text', value: step.save_to_var || '', placeholder: t('e.g. old_name'), 'data-field': 'save_to_var',
           oninput: () => { step.save_to_var = input.value.trim(); step.save_to_column = null; editor.changedQuietly(); },
         });
-        holder.append(field('Lưu vào biến', input, 'Dùng ở bước sau bằng {{var:tên}}.'));
+        holder.append(field(t('Save to a variable'), input, t('Use it in a later block with {{var:name}}.')));
       }
     };
     const select = el('select', {
@@ -222,8 +222,8 @@ const STEP_FORMS = {
         draw(select.value);
         editor.changedQuietly();
       },
-    }, el('option', { value: 'var', text: 'Lưu vào biến', selected: mode === 'var' }), el('option', { value: 'column', text: 'Ghi vào cột Excel', selected: mode === 'column' }));
-    panel.append(field('Lưu ở đâu', select));
+    }, el('option', { value: 'var', text: t('Save to a variable'), selected: mode === 'var' }), el('option', { value: 'column', text: t('Write to an Excel column'), selected: mode === 'column' }));
+    panel.append(field(t('Where to save'), select));
     draw(mode);
     panel.append(holder);
   },
@@ -239,19 +239,19 @@ const STEP_FORMS = {
         editor.changedQuietly();
       },
     });
-    panel.append(field('Số giây', seconds, `Tạm ngưng rồi mới chạy khối tiếp theo. Để trống thì dùng ${DEFAULT_WAIT_SECONDS} giây.`));
+    panel.append(field(t('Seconds'), seconds, t('Pauses before running the next block. Leave empty for {seconds} s.', { seconds: DEFAULT_WAIT_SECONDS })));
   },
   verify(panel, editor, step) {
     const kinds = {
-      equals: 'Phần tử có giá trị bằng', contains: 'Phần tử có chứa',
-      url_contains: 'URL có chứa', url_not_contains: 'URL không chứa',
+      equals: t('The element equals'), contains: t('The element contains'),
+      url_contains: t('The URL contains'), url_not_contains: t('The URL does not contain'),
     };
     const current = Object.keys(kinds).find(key => step[key]) || 'equals';
     const body = el('div');
     const draw = kind => {
       body.replaceChildren();
       if (kind === 'equals' || kind === 'contains') body.append(targetEditor(editor, step), el('div.divider'));
-      body.append(valueField(editor, step, kind, 'Giá trị mong đợi'));
+      body.append(valueField(editor, step, kind, t('Expected value')));
     };
     const select = el('select', {
       'data-field': 'verify-kind',
@@ -263,14 +263,14 @@ const STEP_FORMS = {
         editor.changedQuietly();
       },
     }, Object.entries(kinds).map(([key, text]) => el('option', { value: key, text, selected: key === current })));
-    panel.append(field('Điều kiện', select));
+    panel.append(field(t('Condition'), select));
     panel.append(body);
     draw(current);
   },
   manual_pause(panel, editor, step) {
-    panel.append(textField(editor, step, 'message', 'Lời nhắc', {
-      placeholder: 'vd: Nhập mã xác thực rồi bấm Continue',
-      hint: 'Tool dừng ở đây để bạn làm tay trong cửa sổ Chrome, ví dụ MFA hoặc captcha.',
+    panel.append(textField(editor, step, 'message', t('Reminder'), {
+      placeholder: t('e.g. Enter the login code, then click Continue'),
+      hint: t('The tool stops here so you can work by hand in the Chrome window, for example for MFA or a captcha.'),
     }));
   },
   loop(panel, editor, step) {
@@ -281,16 +281,16 @@ const STEP_FORMS = {
         if (step.source === 'excel') editor.ensureExcelSettings();
         editor.changed();
       },
-    }, el('option', { value: 'excel', text: 'Mỗi hàng Excel', selected: step.source === 'excel' }), el('option', { value: 'count', text: 'Số lần cố định', selected: step.source === 'count' }));
-    panel.append(field('Lặp theo', select));
+    }, el('option', { value: 'excel', text: t('Each Excel row'), selected: step.source === 'excel' }), el('option', { value: 'count', text: t('A fixed number of times'), selected: step.source === 'count' }));
+    panel.append(field(t('Repeat over'), select));
     if (step.source === 'count') {
       const count = el('input', {
         type: 'number', id: 'loop-count', min: '1', value: step.count || 1,
         oninput: () => { step.count = Math.max(1, parseInt(count.value, 10) || 1); editor.changedQuietly(); editor.renderRunbar(); },
       });
-      panel.append(field('Số lần chạy', count, 'Dùng {{i}} để lấy số thứ tự lần lặp.'));
+      panel.append(field(t('Number of runs'), count, t('Use {{i}} to get the number of the current repeat.')));
     } else {
-      panel.append(el('p.muted', { text: 'Chọn file Excel, sheet và dải hàng ở thanh phía dưới.' }));
+      panel.append(el('p.muted', { text: t('Choose the Excel file, sheet and rows in the bar below.') }));
       const excel = editor.flow.excel || {};
       const required = el('input', {
         type: 'text', id: 'excel-required', class: 'mono', value: (excel.required || []).join(', '), placeholder: 'A, C',
@@ -301,7 +301,7 @@ const STEP_FORMS = {
         },
       });
       panel.append(el('div.divider'));
-      panel.append(field('Cột bắt buộc có dữ liệu', required, 'Hàng thiếu cột này sẽ được bỏ qua, không chạy.'));
+      panel.append(field(t('Columns that must have data'), required, t('A row missing one of these is skipped, not run.')));
       const status = el('input', {
         type: 'text', id: 'excel-status', class: 'mono', value: excel.status_column || '', placeholder: 'D',
         oninput: () => {
@@ -310,7 +310,7 @@ const STEP_FORMS = {
           editor.changedQuietly();
         },
       });
-      panel.append(field('Cột ghi trạng thái', status, 'Ghi vào file kết quả. File gốc giữ nguyên.'));
+      panel.append(field(t('Column for the status'), status, t('Written to the result file. The original file stays as it is.')));
     }
   },
 };
@@ -327,7 +327,7 @@ function targetEditor(editor, step) {
   const mode = editor.targetTab || 'element';
   const holder = el('div');
   const tabs = el('div.tabs', { role: 'tablist' }, [
-    ['element', 'Paste element'], ['page', 'Paste page'], ['live', 'Scan open page'],
+    ['element', t('Paste element')], ['page', t('Paste page')], ['live', t('Scan open page')],
   ].map(([key, label]) => el('button', {
     class: mode === key ? 'on' : null,
     'data-tab': key,
@@ -342,7 +342,7 @@ function targetEditor(editor, step) {
 
   const selector = el('input', {
     type: 'text', class: 'mono', id: 'target-selector', value: target.primary,
-    placeholder: '#id, input[name="x"] hoặc xpath=//...',
+    placeholder: t('#id, input[name="x"] or xpath=//...'),
     oninput: () => {
       target.primary = selector.value.trim();
       // What was found for the old element says nothing about the new one.
@@ -356,12 +356,12 @@ function targetEditor(editor, step) {
   const badge = el('span');
   const refreshBadge = () => {
     badge.replaceChildren(target.verified
-      ? el('span.badge.ok', { id: 'verified-badge', text: '✓ Đã kiểm chứng' })
-      : el('span.badge.warn', { id: 'verified-badge', text: 'Chưa kiểm chứng trên trang thật' }));
+      ? el('span.badge.ok', { id: 'verified-badge', text: t('✓ Checked') })
+      : el('span.badge.warn', { id: 'verified-badge', text: t('Not checked on a live page') }));
   };
   refreshBadge();
   holder.append(
-    field('Cách nhận diện', selector),
+    field(t('How to find it'), selector),
     el('div', { style: 'margin:-6px 0 10px' }, badge),
     verifyControls(editor, step, refreshBadge));
   return holder;
@@ -373,7 +373,7 @@ function applyElement(editor, step, info, frames) {
   target.fallbacks = info.fallbacks || [];
   target.frames = frames || [];
   target.verified = false;
-  if (info.is_password && step.do === 'fill' && !step.value) step.value = '{{secret:mat_khau}}';
+  if (info.is_password && step.do === 'fill' && !step.value) step.value = '{{secret:password}}';
   editor.changed();
 }
 
@@ -381,12 +381,12 @@ function elementSummary(editor, step, info) {
   const box = el('div', { style: 'margin-top:8px' });
   const known = info.match_count !== null && info.match_count !== undefined;
   box.append(el('div.row.wrap', { style: 'margin-bottom:6px' },
-    el('span.badge.neutral', { text: `Gợi ý: ${STEP_NAMES[info.action]}` }),
-    known ? el(info.match_count === 1 ? 'span.badge.ok' : 'span.badge.bad', { text: `Khớp ${info.match_count} phần tử` }) : el('span.badge.neutral', { text: 'Số khớp: chưa rõ' }),
+    el('span.badge.neutral', { text: t('Suggested: {name}', { name: STEP_NAMES[info.action] }) }),
+    known ? el(info.match_count === 1 ? 'span.badge.ok' : 'span.badge.bad', { text: t('Matched {count} element(s)', { count: info.match_count }) }) : el('span.badge.neutral', { text: t('Matches: unknown') }),
     info.action !== step.do && step.do !== 'read' && step.do !== 'verify' && step.do !== 'wait_for'
       ? el('button.btn.small', {
         id: 'switch-action',
-        text: `Change to ${STEP_NAMES[info.action]}`,
+        text: t('Change to {name}', { name: STEP_NAMES[info.action] }),
         onclick: () => { step.do = info.action; editor.changed(); },
       })
       : null));
@@ -394,7 +394,7 @@ function elementSummary(editor, step, info) {
     box.append(el('ul.note-list', null, info.warnings.map(text => el('li', { text }))));
   }
   if (info.match_count !== 1 && info.candidates && info.candidates.length > 1) {
-    box.append(el('div.hint', { text: 'Cách nhận diện khác:', style: 'margin:6px 0 4px' }));
+    box.append(el('div.hint', { text: t('Other ways to find it:'), style: 'margin:6px 0 4px' }));
     for (const candidate of info.candidates) {
       box.append(el('label.candidate' + (ensureTarget(step).primary === candidate.selector ? '.on' : ''), {
         onclick: event => {
@@ -414,7 +414,7 @@ function elementSummary(editor, step, info) {
 function pasteElement(editor, step) {
   const area = el('textarea', {
     id: 'paste-element',
-    placeholder: 'F12 → chuột phải vào phần tử → Copy → Copy outerHTML, rồi dán vào đây',
+    placeholder: t('F12 → right-click the element → Copy → Copy outerHTML, then paste it here'),
     value: editor.pasted.element || '',
   });
   const result = el('div');
@@ -424,7 +424,7 @@ function pasteElement(editor, step) {
     try {
       const { element } = await api('POST', '/api/html', { html: area.value, mode: 'element' });
       if (!element) {
-        result.replaceChildren(el('div.hint', { text: 'Không thấy phần tử nào trong nội dung đã dán.' }));
+        result.replaceChildren(el('div.hint', { text: t('No element found in what was pasted.') }));
         return;
       }
       // Set first: applying the element redraws this panel, which shows the summary.
@@ -453,23 +453,23 @@ function elementRow(editor, step, info) {
 }
 
 function elementList(editor, step, elements) {
-  const filter = el('input', { type: 'text', placeholder: 'Lọc theo tên...', id: 'element-filter' });
+  const filter = el('input', { type: 'text', placeholder: t('Filter by name...'), id: 'element-filter' });
   const list = el('div.element-list');
   const draw = () => {
     const word = filter.value.trim().toLowerCase();
     const shown = elements.filter(info => !word || info.label.toLowerCase().includes(word) || info.selector.toLowerCase().includes(word));
     list.replaceChildren(...shown.slice(0, 300).map(info => elementRow(editor, step, info)));
-    if (!shown.length) list.append(el('div.empty', { text: 'Không có phần tử phù hợp.' }));
+    if (!shown.length) list.append(el('div.empty', { text: t('No matching elements.') }));
   };
   filter.addEventListener('input', draw);
   draw();
-  return el('div', { style: 'margin-top:8px' }, el('div.hint', { text: `Tìm thấy ${elements.length} phần tử. Bấm để chọn.`, style: 'margin-bottom:5px' }), filter, list);
+  return el('div', { style: 'margin-top:8px' }, el('div.hint', { text: t('Found {count} element(s). Click one to choose it.', { count: elements.length }), style: 'margin-bottom:5px' }), filter, list);
 }
 
 function pastePage(editor, step) {
   const area = el('textarea', {
     id: 'paste-page',
-    placeholder: 'F12 → Elements → chuột phải vào <html> → Copy → Copy outerHTML (không dùng Ctrl+U)',
+    placeholder: t('F12 → Elements → right-click <html> → Copy → Copy outerHTML (not Ctrl+U)'),
     value: editor.pasted.page || '',
   });
   const result = el('div');
@@ -485,19 +485,19 @@ function pastePage(editor, step) {
   area.addEventListener('input', read);
   if (editor.pagedElements) result.append(elementList(editor, step, editor.pagedElements));
   return el('div.field', null, area,
-    el('div.hint', { text: 'HTML chỉ dùng tạm, không được lưu.' }),
+    el('div.hint', { text: t('The HTML is only used for now and is not saved.') }),
     result);
 }
 
 function livePage(editor, step) {
-  const url = el('input', { type: 'text', class: 'mono', id: 'live-url', placeholder: 'https://... (không bắt buộc)' });
+  const url = el('input', { type: 'text', class: 'mono', id: 'live-url', placeholder: t('https://... (optional)') });
   const result = el('div');
   const button = el('button.btn', {
     id: 'scan-live',
-    text: 'Scan page',
+    text: t('Scan page'),
     onclick: async () => {
       button.disabled = true;
-      button.textContent = 'Scanning...';
+      button.textContent = t('Scanning...');
       try {
         const link = url.value.trim();
         const response = link ? await watchInspection({ cmd: 'scan', url: link }) : await inspectAtBlock(editor, step, { cmd: 'scan' });
@@ -507,12 +507,12 @@ function livePage(editor, step) {
         result.replaceChildren(elementList(editor, step, response.elements));
       } catch (error) { showError(error); } finally {
         button.disabled = false;
-        button.textContent = 'Scan page';
+        button.textContent = t('Scan page');
       }
     },
   });
   return el('div.field', null,
-    field('Link', url, 'Để trống: tool chạy thật các khối phía trước tới khối này rồi quét. Điền link: mở thẳng link đó rồi quét.'),
+    field(t('Link'), url, t('Empty: the tool really runs the blocks before this one, then scans. With a link: it opens that link directly, then scans.')),
     button, result);
 }
 
@@ -530,13 +530,13 @@ async function inspectAtBlock(editor, step, command) {
   if (position >= 0) {
     editor.failedStep = before[position].id;
     renderCanvas(editor);
-    return { error: `Khối ${position + 1} (${STEP_NAMES[before[position].do]}) chưa điền đủ nên chưa chạy tới được đây. Hãy điền hoặc xóa khối đó.` };
+    return { error: t('Block {position} ({name}) is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[before[position].do] }) };
   }
   const unapproved = before.filter(item => ['click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
   if (unapproved.length) {
     const names = unapproved.map(runningOrderLabel).join(', ');
-    const message = `Để tới được khối này, tool sẽ chạy thật ${before.length} khối phía trước, gồm: ${names}. Khối trong vùng lặp dùng hàng đầu tiên của Excel. Riêng khối đang kiểm tra không được thực hiện.`;
-    if (!await confirmBox('Chạy thật các khối phía trước?', message, 'Run to here')) return null;
+    const message = t('To get to this block, the tool will really run the {count} block(s) before it, including: {names}. Blocks in the loop use the first Excel row. The block being checked is not carried out.', { count: before.length, names });
+    if (!await confirmBox(t('Really run the blocks before this one?'), message, t('Run to here'))) return null;
     unapproved.forEach(item => editor.approvedSteps.add(item.id));
   }
   await editor.save.flush();
@@ -564,11 +564,11 @@ function watchInspection(command, onStep) {
     const show = () => {
       if (box) return;
       box = openModal({
-        title: 'Đang chạy tới khối cần kiểm tra',
+        title: t('Running up to the block to check'),
         dismissable: false,
         body: el('div', null, label, pause),
         actions: [{
-          label: 'Stop', id: 'inspect-stop',
+          label: t('Stop'), id: 'inspect-stop',
           onClick: async () => {
             try { await api('POST', '/api/inspect/command', { cmd: 'cancel' }); } catch (error) { showError(error); }
             return true;
@@ -589,7 +589,7 @@ function watchInspection(command, onStep) {
         const event = JSON.parse(message.data);
         if (event.type === 'step') {
           show();
-          label.textContent = `Khối ${event.index}/${event.total}: ${event.label}`;
+          label.textContent = t('Block {index}/{total}: {label}', { index: event.index, total: event.total, label: event.label });
           if (onStep) onStep(event);
         } else if (event.type === 'paused') {
           show();
@@ -597,7 +597,7 @@ function watchInspection(command, onStep) {
             el('p', { text: event.reason, style: 'margin-bottom:8px' }),
             el('button.btn.primary', {
               id: 'inspect-continue',
-              text: 'Continue',
+              text: t('Continue'),
               onclick: () => api('POST', '/api/inspect/command', { cmd: 'continue' }).catch(showError),
             })));
         } else if (event.type === 'resumed') {
@@ -606,20 +606,20 @@ function watchInspection(command, onStep) {
           finish(event);
         }
       };
-      source.addEventListener('end', () => finish({ error: 'Trình duyệt đã bị đóng. Hãy bấm lại.' }));
+      source.addEventListener('end', () => finish({ error: t('The browser was closed. Please click again.') }));
     }).catch(error => finish({ error: error.message }));
   });
 }
 
 function checkResultNode(response) {
   const banner = (kind, text) => el('div.banner.' + kind, { id: 'check-result', text, style: 'margin:8px 0 0' });
-  if (response.cancelled) return banner('warn', 'Đã dừng. Trang trong Chrome đang ở khối vừa chạy xong.');
-  if (response.failed_step) return banner('bad', `Dừng ở khối ${response.position}. ${response.error}`);
+  if (response.cancelled) return banner('warn', t('Stopped. The page in Chrome is at the last block that finished.'));
+  if (response.failed_step) return banner('bad', t('Stopped at block {position}. {error}', { position: response.position, error: response.error }));
   if (response.error) return banner('bad', response.error);
   if (response.problem) return banner('bad', response.problem);
-  if (response.count === 1) return banner('ok', 'Tới đúng trang và khớp đúng 1 phần tử, đã tô đỏ trong Chrome. Hành động làm được.');
-  const hint = response.no_link && response.count === 0 ? ' Phía trước chưa có khối Open link nên tool đã tìm trên trang đang mở.' : '';
-  return banner('bad', `Khớp ${response.count} phần tử.${hint}`);
+  if (response.count === 1) return banner('ok', t('Reached the page and matched exactly 1 element, outlined in red in Chrome. The action can be done.'));
+  const hint = response.no_link && response.count === 0 ? t(' There is no Open link block before this, so the tool looked on the open page.') : '';
+  return banner('bad', t('Matched {count} element(s).', { count: response.count }) + hint);
 }
 
 function verifyControls(editor, step, refreshBadge) {
@@ -627,11 +627,11 @@ function verifyControls(editor, step, refreshBadge) {
   const result = el('div');
   const button = el('button.btn.live', {
     id: 'check-target',
-    text: 'Check on live page',
+    text: t('Check on live page'),
     onclick: async () => {
-      if (!target.primary) { toast('Hãy chọn phần tử trước.', 'bad'); return; }
+      if (!target.primary) { toast(t('Choose an element first.'), 'bad'); return; }
       button.disabled = true;
-      button.textContent = 'Checking...';
+      button.textContent = t('Checking...');
       try {
         const response = await inspectAtBlock(editor, step, { cmd: 'check', target, kind: step.do });
         if (!response) return;
@@ -643,11 +643,11 @@ function verifyControls(editor, step, refreshBadge) {
         result.replaceChildren(checkResultNode(response));
       } finally {
         button.disabled = false;
-        button.textContent = 'Check on live page';
+        button.textContent = t('Check on live page');
       }
     },
   });
   return el('div', null, button,
-    el('div.hint', { text: 'Chạy thật các khối phía trước tới khối này, tô đỏ phần tử và thử xem hành động có làm được không. Khối này chưa được thực hiện.' }),
+    el('div.hint', { text: t('Really runs the blocks before this one, outlines the element in red and tries whether the action can be done. This block itself is not carried out.') }),
     result);
 }

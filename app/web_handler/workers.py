@@ -4,7 +4,7 @@ import subprocess
 import sys
 import threading
 
-from . import child_processes, paths
+from . import child_processes, i18n, paths
 
 EVENT_PREFIX = "@@"
 
@@ -28,7 +28,7 @@ class WorkerSession:
         )
         # Before the job is sent, so whatever the worker starts is covered too.
         child_processes.adopt(self.process)
-        self.send(self.job)
+        self.send({**self.job, "language": i18n.language()})
         threading.Thread(target=self._read, daemon=True).start()
 
     def send(self, payload):

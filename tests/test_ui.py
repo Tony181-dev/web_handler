@@ -22,7 +22,7 @@ os.environ["WEB_HANDLER_HEADLESS"] = "1"
 
 from playwright.sync_api import expect, sync_playwright  # noqa: E402
 
-from web_handler import paths, secret_store  # noqa: E402
+from web_handler import i18n, paths, secret_store  # noqa: E402
 
 SHOTS = Path(os.environ.get("WEB_HANDLER_SHOTS", "")) if os.environ.get("WEB_HANDLER_SHOTS") else None
 NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -112,7 +112,7 @@ class AppTestCase(unittest.TestCase):
 
     def saved_flow(self, flow_id=None):
         flow_id = flow_id or self.page.url.rsplit("/", 1)[-1]
-        self.page.wait_for_function("document.querySelector('.save-state').textContent !== 'Chưa lưu' && document.querySelector('.save-state').textContent !== 'Đang lưu...'")
+        self.page.wait_for_function("!['Not saved', 'Saving...'].includes(document.querySelector('.save-state').textContent)")
         return json.loads((Path(DATA) / "flows" / f"{flow_id}.json").read_text(encoding="utf-8"))
 
     def assert_buttons_are_english(self):
@@ -131,17 +131,17 @@ class DemoTests(AppTestCase):
         self.run_demo()
         self.page.click("#run-full")
         expect(self.page.locator("#confirm-total")).to_contain_text("4")
-        expect(self.page.locator("#confirm-total")).to_contain_text("bỏ qua 1")
+        expect(self.page.locator("#confirm-total")).to_contain_text("1 row(s) with missing data skipped")
         expect(self.page.locator("#confirm-hosts")).to_contain_text(f"127.0.0.1:{self.port}")
         self.shot("confirm")
         self.assert_buttons_are_english()
         self.page.click("[data-action=confirm-run]")
         expect(self.page.locator("#run-stop")).to_have_text("Stop after this row")
         self.assert_buttons_are_english()
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=90000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=90000)
         expect(self.page.locator("[data-count='OK']")).to_have_text("3")
-        expect(self.page.locator("[data-count='Lỗi']")).to_have_text("1")
-        expect(self.page.locator("[data-count='Bỏ qua']")).to_have_text("1")
+        expect(self.page.locator("[data-count='Failed']")).to_have_text("1")
+        expect(self.page.locator("[data-count='Skipped']")).to_have_text("1")
         expect(self.page.locator("#run-rows tr[data-row='4']")).to_contain_text("view-summary")
         expect(self.page.locator("#result-file")).to_contain_text("example_data_result_")
         self.assertNotIn("null", self.page.locator("#run-page").inner_text())
@@ -158,19 +158,19 @@ class DemoTests(AppTestCase):
         self.page.click("#run-retry")
         expect(self.page.locator("#confirm-total")).to_have_text("1")
         self.page.click("[data-action=confirm-run]")
-        expect(self.page.locator("[data-count='Lỗi']")).to_have_text("1", timeout=60000)
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=60000)
+        expect(self.page.locator("[data-count='Failed']")).to_have_text("1", timeout=60000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
 
         # The finished run can be opened again from its link.
         address = self.page.url
         self.page.goto(self.url)
         self.page.goto(address)
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.")
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.")
 
     def test_trial_warns_it_writes_for_real(self):
         self.run_demo()
         self.page.click("#run-trial")
-        expect(self.page.locator(".modal .banner.warn")).to_contain_text("ghi thật")
+        expect(self.page.locator(".modal .banner.warn")).to_contain_text("for real")
         expect(self.page.locator("#confirm-total")).to_have_text("1")
         self.page.click("[data-action=cancel]")
         expect(self.page.locator(".modal")).to_have_count(0)
@@ -179,37 +179,37 @@ class DemoTests(AppTestCase):
         self.run_demo()
         expect(self.page.locator(".loop-frame .node")).to_have_count(5)
         expect(self.page.locator("#canvas .node")).to_have_count(10)
-        expect(self.page.locator("#row-count")).to_have_text("Chạy tới hết cột A (gặp ô trống)")
+        expect(self.page.locator("#row-count")).to_have_text("Runs until column A ends (first empty cell)")
 
     def test_row_count_message_follows_the_end_row(self):
         self.run_demo()
         expect(self.page.locator("#end-row")).to_have_value("")
         self.page.click("#run-full")
-        expect(self.page.locator("#confirm-stop")).to_have_text("Chạy tới hết cột A (gặp ô trống)")
+        expect(self.page.locator("#confirm-stop")).to_have_text("Runs until column A ends (first empty cell)")
         self.page.click("[data-action=cancel]")
         self.page.fill("#end-row", "4")
-        expect(self.page.locator("#row-count")).to_have_text("tối đa 3 lần")
+        expect(self.page.locator("#row-count")).to_have_text("up to 3 run(s)")
         self.page.click("#run-full")
         expect(self.page.locator("#confirm-total")).to_have_text("3")
         expect(self.page.locator("#confirm-stop")).to_have_count(0)
         self.page.click("[data-action=cancel]")
         self.page.fill("#end-row", "")
-        expect(self.page.locator("#row-count")).to_contain_text("hết cột A")
+        expect(self.page.locator("#row-count")).to_contain_text("column A ends")
 
     def test_clear_all_also_forgets_excel_but_keeps_the_file(self):
         self.run_demo()
         workbook = Path(self.page.evaluate("window.currentEditor.excelPath"))
         self.page.click("#clear-all")
-        expect(self.page.locator(".modal")).to_contain_text("10 khối")
+        expect(self.page.locator(".modal")).to_contain_text("10 block(s)")
         self.page.click("[data-action=confirm]")
         expect(self.page.locator("#canvas .node")).to_have_count(0)
-        expect(self.page.locator("#excel-name")).to_have_text("Chưa chọn file Excel")
+        expect(self.page.locator("#excel-name")).to_have_text("No Excel file selected")
         self.page.wait_for_timeout(800)
         self.assertIsNone(self.saved_flow()["excel"])
         self.assertTrue(workbook.exists())
 
         self.page.reload()
-        expect(self.page.locator("#excel-name")).to_have_text("Chưa chọn file Excel")
+        expect(self.page.locator("#excel-name")).to_have_text("No Excel file selected")
         expect(self.page.locator("#clear-all")).to_be_disabled()
 
 
@@ -225,7 +225,7 @@ class BuilderTests(AppTestCase):
         self.page.locator("#canvas .node").nth(1).click()
         self.page.fill("#paste-element", '<input id="summary" name="s" type="text">')
         expect(self.page.locator("#target-selector")).to_have_value("#summary")
-        expect(self.page.locator("#verified-badge")).to_contain_text("Chưa kiểm chứng")
+        expect(self.page.locator("#verified-badge")).to_contain_text("Not checked")
         self.page.locator("[data-field=value]").fill("{{C}}")
         expect(self.page.locator("#canvas .node").nth(1)).to_contain_text("#summary")
         self.page.wait_for_timeout(800)
@@ -250,7 +250,7 @@ class BuilderTests(AppTestCase):
         self.page.click("#make-loop")
 
         self.page.click("#clear-all")
-        expect(self.page.locator(".modal")).to_contain_text("3 khối")
+        expect(self.page.locator(".modal")).to_contain_text("3 block(s)")
         self.assert_buttons_are_english()
         self.page.get_by_role("button", name="Cancel").click()
         expect(self.page.locator("#canvas .node")).to_have_count(3)
@@ -322,7 +322,7 @@ class BuilderTests(AppTestCase):
         self.build_three()
         nodes = "#canvas .node"
         self.lasso(f"{nodes} >> nth=1", f"{nodes} >> nth=2")
-        expect(self.page.locator(".selection-bar")).to_contain_text("2 khối")
+        expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
         self.shot("lasso")
         self.page.click("#make-loop")
         expect(self.page.locator(".loop-frame .node")).to_have_count(2)
@@ -331,7 +331,7 @@ class BuilderTests(AppTestCase):
         self.drag_tool("goto")
         expect(self.page.locator("#canvas .node")).to_have_count(4)
         self.page.evaluate("window.currentEditor.selectMany(['s1', 's4'])")
-        expect(self.page.locator("#loop-problem")).to_contain_text("một vùng lặp")
+        expect(self.page.locator("#loop-problem")).to_contain_text("one loop")
         expect(self.page.locator("#make-loop")).to_be_disabled()
 
     def test_lasso_rejects_non_adjacent_blocks(self):
@@ -342,7 +342,7 @@ class BuilderTests(AppTestCase):
             self.page.locator(f".tool[data-kind={kind}]").click()
         editor = "window.currentEditor"
         self.page.evaluate(f"{editor}.selectMany(['s1', 's3'])")
-        expect(self.page.locator("#loop-problem")).to_contain_text("liên tiếp")
+        expect(self.page.locator("#loop-problem")).to_contain_text("next to each other")
         expect(self.page.locator("#make-loop")).to_be_disabled()
 
     def test_remove_loop_keeps_its_blocks(self):
@@ -374,8 +374,8 @@ class BuilderTests(AppTestCase):
     def test_incomplete_flow_is_blocked_with_reasons(self):
         self.build_three()
         self.page.click("#run-full")
-        expect(self.page.locator(".modal")).to_contain_text("Chưa chạy được")
-        expect(self.page.locator("#issues")).to_contain_text("chưa có link")
+        expect(self.page.locator(".modal")).to_contain_text("Cannot run yet")
+        expect(self.page.locator("#issues")).to_contain_text("has no link")
         expect(self.page.locator("[data-action=confirm-run]")).to_have_count(0)
 
     def test_count_loop_has_run_count_on_the_bar(self):
@@ -384,7 +384,7 @@ class BuilderTests(AppTestCase):
         self.page.click("#make-loop")
         self.page.select_option("#loop-source", "count")
         self.page.fill("#run-count", "7")
-        expect(self.page.locator(".loop-head")).to_contain_text("7 lần")
+        expect(self.page.locator(".loop-head")).to_contain_text("7 time(s)")
         self.page.wait_for_timeout(800)
         loop = next(step for step in self.saved_flow()["steps"] if step["do"] == "loop")
         self.assertEqual(loop["count"], 7)
@@ -433,12 +433,12 @@ class BuilderTests(AppTestCase):
         self.page.locator(".tool[data-kind=fill]").click()
         self.page.fill("#target-selector", "#user")
         self.page.click("#check-target")
-        expect(self.page.locator("#check-result")).to_contain_text("đúng 1 phần tử", timeout=60000)
-        expect(self.page.locator("#verified-badge")).to_contain_text("Đã kiểm chứng")
+        expect(self.page.locator("#check-result")).to_contain_text("exactly 1 element", timeout=60000)
+        expect(self.page.locator("#verified-badge")).to_contain_text("Checked")
         self.page.fill("#target-selector", "#khong_co")
-        expect(self.page.locator("#verified-badge")).to_contain_text("Chưa kiểm chứng")
+        expect(self.page.locator("#verified-badge")).to_contain_text("Not checked")
         self.page.click("#check-target")
-        expect(self.page.locator("#check-result")).to_contain_text("Khớp 0", timeout=30000)
+        expect(self.page.locator("#check-result")).to_contain_text("Matched 0", timeout=30000)
 
     def test_panel_has_no_iframe_or_fallback_details(self):
         self.new_flow()
@@ -447,7 +447,7 @@ class BuilderTests(AppTestCase):
         expect(self.page.locator("#target-selector")).to_have_value("#save")
         panel = self.page.locator("#inspector")
         self.assertNotIn("Iframe", panel.inner_text())
-        self.assertNotIn("Dự phòng", panel.inner_text())
+        self.assertNotIn("Fallback", panel.inner_text())
         expect(self.page.locator("#check-url")).to_have_count(0)
 
         # Typing another element drops what was found for the old one.
@@ -465,7 +465,7 @@ class BuilderTests(AppTestCase):
 
         self.page.click("[data-mode=excel]")
         expect(self.page.locator("[data-field=value]")).to_have_count(0)
-        expect(self.page.locator("#column-preview")).to_contain_text("C là cột C")
+        expect(self.page.locator("#column-preview")).to_contain_text("C is column C")
         expect(self.page.locator("#needs-loop")).to_be_visible()
         self.page.locator("[data-column=value]").fill("c")
         expect(self.page.locator("[data-column=value]")).to_have_value("C")
@@ -511,19 +511,19 @@ class BuilderTests(AppTestCase):
         self.page.fill("#target-selector", "#user")
         self.page.select_option("[data-field=read-mode]", "column")
         self.page.locator("[data-field=save_to_column]").fill("C")
-        expect(self.page.locator("#canvas .node").nth(0)).to_contain_text("Excel, cột A")
+        expect(self.page.locator("#canvas .node").nth(0)).to_contain_text("Excel, column A")
 
         self.lasso("#canvas .node >> nth=0", "#canvas .node >> nth=2")
         self.page.click("#make-loop")
         # Blocks that use a column make the loop follow Excel without being asked.
         expect(self.page.locator("#loop-source")).to_have_value("excel")
         self.page.evaluate("path => window.currentEditor.loadExcel(path)", str(path))
-        expect(self.page.locator("#row-count")).to_have_text("Chạy tới hết cột A (gặp ô trống)")
+        expect(self.page.locator("#row-count")).to_have_text("Runs until column A ends (first empty cell)")
 
         self.page.click("#run-full")
         expect(self.page.locator("#confirm-total")).to_contain_text("3")
         self.page.click("[data-action=confirm-run]")
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=90000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=90000)
         expect(self.page.locator("[data-count='OK']")).to_have_text("3")
         result = load_workbook(self.page.locator("#result-file").inner_text())
         self.assertEqual([result.active[f"C{row}"].value for row in (2, 3, 4)], ["Giá trị 1", "Giá trị 2", "Giá trị 3"])
@@ -546,8 +546,8 @@ class LiveCheckTests(AppTestCase):
         expect(modal).to_contain_text("input.login_button")
         self.shot("check_confirm")
         self.page.click("[data-action=confirm]")
-        expect(self.page.locator("#check-result")).to_contain_text("đúng 1 phần tử", timeout=60000)
-        expect(self.page.locator("#verified-badge")).to_contain_text("Đã kiểm chứng")
+        expect(self.page.locator("#check-result")).to_contain_text("exactly 1 element", timeout=60000)
+        expect(self.page.locator("#verified-badge")).to_contain_text("Checked")
         self.shot("check_ok")
 
         # The next block would really press Save, so that is asked about first, and can be declined.
@@ -563,10 +563,10 @@ class LiveCheckTests(AppTestCase):
         self.page.fill("#target-selector", "#khong_co")
         self.page.locator("#canvas .node[data-step=s4]").click()
         self.page.click("#check-target")
-        expect(self.page.locator("#check-result")).to_contain_text("Dừng ở khối 2", timeout=60000)
+        expect(self.page.locator("#check-result")).to_contain_text("Stopped at block 2", timeout=60000)
         expect(self.page.locator("#check-result")).to_contain_text("#khong_co")
         expect(self.page.locator("#canvas .node[data-step=s2]")).to_have_class(re.compile("failed"))
-        expect(self.page.locator("#verified-badge")).to_contain_text("Đã kiểm chứng")
+        expect(self.page.locator("#verified-badge")).to_contain_text("Checked")
         self.shot("check_failed")
 
     def test_incomplete_block_stops_before_opening_anything(self):
@@ -575,7 +575,7 @@ class LiveCheckTests(AppTestCase):
             self.page.locator(f".tool[data-kind={kind}]").click()
         self.page.fill("#target-selector", "#user")
         self.page.click("#check-target")
-        expect(self.page.locator("#check-result")).to_contain_text("Khối 1 (Open link)")
+        expect(self.page.locator("#check-result")).to_contain_text("Block 1 (Open link)")
         expect(self.page.locator("#canvas .node[data-step=s1]")).to_have_class(re.compile("failed"))
 
     def test_manual_block_waits_for_continue_and_can_be_stopped(self):
@@ -591,12 +591,12 @@ class LiveCheckTests(AppTestCase):
         expect(self.page.locator(".modal")).to_contain_text("Nhập mã xác thực", timeout=60000)
         self.assert_buttons_are_english()
         self.page.click("[data-action=inspect-stop]")
-        expect(self.page.locator("#check-result")).to_contain_text("Đã dừng", timeout=30000)
+        expect(self.page.locator("#check-result")).to_contain_text("Stopped", timeout=30000)
 
         self.page.click("#check-target")
         expect(self.page.locator("#inspect-continue")).to_be_visible(timeout=30000)
         self.page.click("#inspect-continue")
-        expect(self.page.locator("#check-result")).to_contain_text("đúng 1 phần tử", timeout=30000)
+        expect(self.page.locator("#check-result")).to_contain_text("exactly 1 element", timeout=30000)
 
 
 class RunHighlightTests(AppTestCase):
@@ -618,7 +618,7 @@ class RunHighlightTests(AppTestCase):
         self.shot("run_lit")
         expect(self.node("s10")).to_have_class(re.compile("failed"), timeout=30000)
         self.shot("run_row_failed")
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=60000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
         # The last round ended well, so everything is back to normal.
         expect(self.page.locator("#run-flow .node.lit")).to_have_count(0)
         expect(self.page.locator("#run-flow .node.running")).to_have_count(0)
@@ -632,7 +632,7 @@ class RunHighlightTests(AppTestCase):
         self.page.wait_for_timeout(800)
         self.page.click("#run-full")
         self.page.click("[data-action=confirm-run]")
-        expect(self.page.locator("#run-headline")).to_have_text("Đã dừng vì lỗi.", timeout=60000)
+        expect(self.page.locator("#run-headline")).to_have_text("Stopped by an error.", timeout=60000)
         expect(self.node("s3")).to_have_class(re.compile("failed"))
         expect(self.node("s2")).to_have_class(re.compile("lit"))
         expect(self.node("s4")).not_to_have_class(re.compile("lit|running|failed"))
@@ -655,7 +655,7 @@ class SystemLogTests(AppTestCase):
         self.shot("log_button")
 
         self.open_log()
-        expect(self.page.locator("#log-lines")).to_contain_text("đã khởi động")
+        expect(self.page.locator("#log-lines")).to_contain_text("started")
         self.assert_buttons_are_english()
         self.shot("log_panel")
         self.page.click("#log-clear")
@@ -669,17 +669,17 @@ class SystemLogTests(AppTestCase):
         self.open_log()
         self.page.click("#run-full")
         self.page.click("[data-action=confirm-run]")
-        expect(self.page.locator("#log-lines")).to_contain_text("Bắt đầu chạy", timeout=30000)
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=90000)
-        expect(self.page.locator("#log-lines")).to_contain_text("Hàng 4")
-        expect(self.page.locator("#log-lines")).to_contain_text("Kết thúc")
-        expect(self.page.locator("#log-lines .error").first).to_contain_text("Lỗi")
+        expect(self.page.locator("#log-lines")).to_contain_text("Started running", timeout=30000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=90000)
+        expect(self.page.locator("#log-lines")).to_contain_text("Row 4")
+        expect(self.page.locator("#log-lines")).to_contain_text("Ended")
+        expect(self.page.locator("#log-lines .error").first).to_contain_text("Failed")
         self.shot("log_run")
 
         # A filled password never reaches the log, on screen or on disk.
-        self.assertNotIn("matkhau-demo", self.page.locator("#log-lines").inner_text())
-        self.assertNotIn("matkhau-demo", (Path(DATA) / "system.log").read_text(encoding="utf-8"))
-        self.assertNotIn("Tên mới 1", (Path(DATA) / "system.log").read_text(encoding="utf-8"))
+        self.assertNotIn("demo-password", self.page.locator("#log-lines").inner_text())
+        self.assertNotIn("demo-password", (Path(DATA) / "system.log").read_text(encoding="utf-8"))
+        self.assertNotIn("New name 1", (Path(DATA) / "system.log").read_text(encoding="utf-8"))
 
     def test_log_is_available_on_other_screens(self):
         self.open_log()
@@ -691,12 +691,12 @@ class SystemLogTests(AppTestCase):
 class SetupAndSecurityTests(AppTestCase):
     def test_setup_screen(self):
         self.page.click("#nav-setup")
-        expect(self.page.locator("[data-item=libraries]")).to_contain_text("Đạt", timeout=60000)
-        expect(self.page.locator("[data-item=browser]")).to_contain_text("Đạt")
+        expect(self.page.locator("[data-item=libraries]")).to_contain_text("Pass", timeout=60000)
+        expect(self.page.locator("[data-item=browser]")).to_contain_text("Pass")
         self.page.click("#setup-test")
-        expect(self.page.locator("[data-item=recording]")).to_contain_text("Đạt", timeout=120000)
-        expect(self.page.locator("[data-item=browser_control]")).to_contain_text("Đạt")
-        expect(self.page.locator("[data-item=credentials]")).to_contain_text("Đạt")
+        expect(self.page.locator("[data-item=recording]")).to_contain_text("Pass", timeout=120000)
+        expect(self.page.locator("[data-item=browser_control]")).to_contain_text("Pass")
+        expect(self.page.locator("[data-item=credentials]")).to_contain_text("Pass")
         self.assertNotIn("null", self.page.locator("#setup-page").inner_text())
         self.shot("setup")
         self.assert_buttons_are_english()
@@ -727,7 +727,7 @@ class SetupAndSecurityTests(AppTestCase):
         second = start_app()
         output, _ = second.communicate(timeout=30)
         self.assertEqual(second.returncode, 0, output)
-        self.assertIn("đang chạy rồi", output)
+        self.assertIn("already running", output)
         self.assertEqual(json.loads((Path(DATA) / "server.json").read_text())["port"], self.port)
 
     def test_home_lists_flows_and_flow_can_be_deleted(self):
@@ -765,7 +765,7 @@ class SetupAndSecurityTests(AppTestCase):
         self.assertEqual(flow["excel"]["required"], ["A", "B"])
         self.assertEqual([step["do"] for step in flow["steps"][-1]["steps"]], ["goto", "fill", "click"])
         # A blank block says what it is for, and its form opens without trouble.
-        expect(self.page.locator("#canvas .node").nth(1)).to_contain_text("Ô tài khoản")
+        expect(self.page.locator("#canvas .node").nth(1)).to_contain_text("Username field")
         self.page.locator("#canvas .node").nth(1).click()
         expect(self.page.locator("#target-selector")).to_be_visible()
 
@@ -801,13 +801,13 @@ class WaitBlockTests(AppTestCase):
         self.page.locator(".tool[data-kind=wait]").click()
         node = self.page.locator("#canvas .node").first
         expect(node).to_contain_text("Wait")
-        expect(node).to_contain_text("3 giây")
+        expect(node).to_contain_text("3 s")
         expect(self.page.locator("#wait-seconds")).to_have_value("3")
         self.page.fill("#wait-seconds", "1.5")
-        expect(node).to_contain_text("1.5 giây")
+        expect(node).to_contain_text("1.5 s")
         self.assertEqual(self.saved_flow()["steps"][0]["seconds"], 1.5)
         self.page.fill("#wait-seconds", "")
-        expect(node).to_contain_text("3 giây")
+        expect(node).to_contain_text("3 s")
         self.assertEqual(self.saved_flow()["steps"][0]["seconds"], 3)
 
     def test_run_counts_down_on_the_block(self):
@@ -820,12 +820,195 @@ class WaitBlockTests(AppTestCase):
         self.page.click("#run-full")
         self.page.click("[data-action=confirm-run]")
         node = self.page.locator("#run-flow .node[data-step=s2]")
-        expect(node).to_contain_text("còn", timeout=60000)
-        expect(self.page.locator("#run-current")).to_contain_text("còn")
+        expect(node).to_contain_text("left", timeout=60000)
+        expect(self.page.locator("#run-current")).to_contain_text("left")
         self.shot("wait_countdown")
-        first = int(re.search(r"còn (\d+)", node.inner_text()).group(1))
-        expect(node).not_to_contain_text(f"còn {first} giây", timeout=3000)
-        expect(self.page.locator("#run-headline")).to_have_text("Đã chạy xong.", timeout=30000)
+        first = int(re.search(r"(\d+) s left", node.inner_text()).group(1))
+        expect(node).not_to_contain_text(f"{first} s left", timeout=3000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=30000)
+
+
+class ToolHelpTests(AppTestCase):
+    def test_hovering_a_block_explains_it_and_leaving_removes_it(self):
+        self.new_flow()
+        help_box = self.page.locator("#tool-help")
+        expect(help_box).to_have_count(0)
+        self.page.locator(".tool[data-kind=fill]").hover()
+        expect(help_box).to_be_visible()
+        expect(help_box).to_contain_text("Types a value")
+        self.shot("tool_help")
+        self.page.locator(".tool[data-kind=wait]").hover()
+        expect(help_box).to_have_count(1)
+        expect(help_box).to_contain_text("Pauses")
+        self.page.locator("#canvas").hover()
+        expect(help_box).to_have_count(0)
+
+    def test_every_block_and_action_in_the_column_has_help(self):
+        self.new_flow()
+        help_box = self.page.locator("#tool-help")
+        tools = self.page.locator(".tool")
+        seen = set()
+        for index in range(tools.count()):
+            tools.nth(index).hover()
+            expect(help_box).to_be_visible()
+            seen.add(help_box.inner_text())
+        self.assertEqual(len(seen), tools.count())
+        for selector in ("#start-record", "#clear-all"):
+            # A disabled button gets no pointer events, so give Clear all something to clear.
+            self.page.locator(".tool[data-kind=goto]").click()
+            self.page.locator(selector).hover()
+            expect(help_box).to_be_visible()
+
+    def test_help_stays_on_screen_and_does_not_get_in_the_way_of_dragging(self):
+        self.new_flow()
+        tool = self.page.locator(".tool[data-kind=manual_pause]")
+        tool.hover()
+        box = self.page.locator("#tool-help").bounding_box()
+        self.assertLessEqual(box["y"] + box["height"], self.page.viewport_size["height"])
+        self.assertGreaterEqual(box["x"], tool.bounding_box()["x"] + tool.bounding_box()["width"])
+        self.page.mouse.down()
+        expect(self.page.locator("#tool-help")).to_have_count(0)
+        self.page.mouse.up()
+
+    def test_keyboard_focus_shows_help(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=click]").focus()
+        expect(self.page.locator("#tool-help")).to_contain_text("Clicks")
+        self.page.locator("#flow-name").focus()
+        expect(self.page.locator("#tool-help")).to_have_count(0)
+
+
+class LanguageTests(AppTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.vi = json.loads((ROOT / "app" / "web_handler" / "ui" / "lang" / "vi.json").read_text(encoding="utf-8"))
+        cls.long_english = [
+            key for key, value in cls.vi.items()
+            if key != value and "{" not in key and len(key.split()) >= 3
+        ]
+
+    def tearDown(self):
+        self.set_language("en")
+        super().tearDown()
+
+    def set_language(self, language):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/language?key={self.key}", method="PUT",
+            data=json.dumps({"language": language}).encode("utf-8"), headers={"Content-Type": "application/json"},
+        )
+        with NO_PROXY.open(request, timeout=10):
+            pass
+
+    def choose(self, language):
+        self.page.select_option("#language", language)
+        expect(self.page.locator("html")).to_have_attribute("lang", language)
+
+    def assert_all_english(self, screen):
+        # Each language keeps its own name in the picker.
+        text = self.page.locator("body").inner_text().replace("Ti\u1ebfng Vi\u1ec7t", "")
+        self.assertEqual(VIETNAMESE_LETTERS.findall(text), [], f"{screen}: {text[:600]}")
+
+    def assert_all_vietnamese(self, screen):
+        labels = self.page.locator(BUTTON_LABELS).all_inner_texts()
+        left = [label for label in labels if label.strip() in self.vi and self.vi[label.strip()] != label.strip()]
+        self.assertEqual(left, [], f"{screen}: buttons still in English")
+        text = self.page.locator("body").inner_text()
+        left = [key for key in self.long_english if key in text]
+        self.assertEqual(left, [], f"{screen}: text still in English")
+
+    def walk_screens(self, check):
+        check("home")
+        self.page.click("#new-flow")
+        expect(self.page.locator("[data-template=blank]")).to_be_visible()
+        check("new flow dialog")
+        self.page.locator(".modal input").fill("Flow one")
+        self.page.click("[data-template=login_excel]")
+        expect(self.page.locator("#canvas .node").first).to_be_visible()
+        check("builder")
+        self.page.locator(".tool[data-kind=wait_for]").hover()
+        self.shot(f"builder_{self.page.locator('html').get_attribute('lang')}")
+        self.page.locator("#canvas .node").nth(1).click()
+        check("fill panel")
+        for tab in ("element", "page", "live"):
+            self.page.click(f"[data-tab={tab}]")
+            check(f"tab {tab}")
+        self.page.click("[data-tab=element]")
+        for kind in ("goto", "click", "select", "check", "read", "wait_for", "wait", "verify", "manual_pause"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+            check(f"{kind} panel")
+            # Pressing a block hides its help until the pointer comes back.
+            self.page.locator("#flow-name").hover()
+            self.page.locator(f".tool[data-kind={kind}]").hover()
+            expect(self.page.locator("#tool-help")).to_be_visible()
+            check(f"{kind} help")
+        self.page.click("#run-full")
+        expect(self.page.locator(".modal")).to_be_visible()
+        check("issues dialog")
+        self.page.click("[data-action=close]")
+        self.page.click("#nav-secrets")
+        expect(self.page.locator(".modal")).to_be_visible()
+        check("secrets")
+        self.page.click("[data-action=close]")
+        self.page.click("#nav-setup")
+        expect(self.page.locator("#setup-table")).to_be_visible(timeout=60000)
+        check("setup")
+        self.page.click(".brand")
+        expect(self.page.locator("#open-demo")).to_be_visible()
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        check("sample flow")
+        self.page.click("#run-full")
+        expect(self.page.locator("[data-action=confirm-run]")).to_be_visible()
+        check("confirm run")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-counts")).to_be_visible()
+        self.page.wait_for_selector("#result-file", timeout=120000)
+        check("finished run")
+        self.page.locator(".btn.log-toggle").first.click()
+        expect(self.page.locator("#log-panel")).to_be_visible()
+
+    def test_app_starts_in_english_and_every_screen_is_english(self):
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+        expect(self.page.locator("#language")).to_have_value("en")
+        self.walk_screens(self.assert_all_english)
+        self.assert_all_english("log")
+
+    def test_vietnamese_covers_every_screen(self):
+        expect(self.page.locator("#new-flow")).to_be_visible()
+        self.choose("vi")
+        expect(self.page.locator("#new-flow")).to_have_text(self.vi["+ New flow"])
+        self.walk_screens(self.assert_all_vietnamese)
+        self.assert_all_vietnamese("log")
+
+    def test_choice_is_remembered_after_reloading(self):
+        expect(self.page.locator("#new-flow")).to_be_visible()
+        self.choose("vi")
+        self.page.reload()
+        expect(self.page.locator("#language")).to_have_value("vi")
+        expect(self.page.locator("#new-flow")).to_have_text(self.vi["+ New flow"])
+        self.choose("en")
+        expect(self.page.locator("#new-flow")).to_have_text("+ New flow")
+
+    def test_results_and_messages_from_a_run_follow_the_language(self):
+        from openpyxl import load_workbook
+
+        expect(self.page.locator("#new-flow")).to_be_visible()
+        self.choose("vi")
+        expect(self.page.locator("#open-demo")).to_be_visible()
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-headline")).to_have_text(self.vi["Finished."], timeout=90000)
+        expect(self.page.locator("[data-count='Failed']")).to_have_text("1")
+        path = self.page.locator("#result-file").inner_text()
+        workbook = load_workbook(path)
+        sheet = workbook["Sheet1"]
+        self.assertEqual(sheet["A1"].value, self.vi["Item ID"])
+        self.assertTrue(sheet["D4"].value.startswith(self.vi["Failed"]))
+        self.assertTrue(sheet["D5"].value.startswith(self.vi["Skipped"]))
+        workbook.close()
 
 
 if __name__ == "__main__":

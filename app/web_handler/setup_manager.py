@@ -8,12 +8,13 @@ import threading
 import zipfile
 
 from . import paths, setup_checks
+from .i18n import t
 from .workers import WorkerSession
 
 LIBRARY_NAMES = ("playwright", "openpyxl", "beautifulsoup4", "keyring")
 SELF_TESTS = {
-    "browser_control": ("browser", "Điều khiển trình duyệt"),
-    "recording": ("recording", "Ghi thao tác"),
+    "browser_control": ("browser", "Browser control"),
+    "recording": ("recording", "Recording actions"),
     "credentials": ("credentials", "Windows Credential Manager"),
 }
 SELF_TEST_TIMEOUT = 180
@@ -25,6 +26,7 @@ class SetupManager:
         self.lock = threading.Lock()
         self.busy = None
         self.message = ""
+        self.failed = False
         self.self_tests = {}
 
     # Fast checks
@@ -32,8 +34,8 @@ class SetupManager:
     def check_python(self):
         version = platform.python_version()
         if setup_checks.is_bundled_python():
-            return {"status": "PASS", "detail": f"Python {version} riêng của app."}
-        return {"status": "PASS", "detail": f"Python {version} của máy, vì bản riêng của app không chạy được hoặc chưa được giải nén."}
+            return {"status": "PASS", "detail": t("The app's own Python {version}.", version=version)}
+        return {"status": "PASS", "detail": t("This machine's Python {version}, because the app's own could not run or is not unpacked yet.", version=version)}
 
     def check_libraries(self):
         code = (
@@ -45,23 +47,23 @@ class SetupManager:
         returncode, output, _ = setup_checks.run_with_timeout([sys.executable, "-c", code], 90)
         if returncode == 0:
             return {"status": "PASS", "detail": ", ".join(output.split("\n")[:4]).replace("\r", "").strip(", ")}
-        detail = "Chưa cài thư viện."
+        detail = t("The libraries are not installed.")
         if paths.SITE_DIR.is_dir() and any(paths.SITE_DIR.iterdir()):
-            detail = "Thư viện cài chưa đủ hoặc bị lỗi: " + output.strip().splitlines()[-1][:200] if output.strip() else "Thư viện bị lỗi."
+            detail = t("The libraries are incomplete or damaged: {error}", error=output.strip().splitlines()[-1][:200]) if output.strip() else t("The libraries are damaged.")
         fixable = paths.WHEELS_DIR.is_dir()
         return {"status": "FAIL", "detail": detail, "fixable": fixable, "size_mb": _folder_size_mb(paths.WHEELS_DIR)}
 
     def check_browser(self):
         chrome = setup_checks.find_chrome()
         if chrome:
-            return {"status": "PASS", "detail": "Tìm thấy Chrome đã cài trên máy."}
+            return {"status": "PASS", "detail": t("Found Chrome installed on this machine.")}
         chromium = setup_checks.find_bundled_chromium()
         if chromium:
-            return {"status": "PASS", "detail": "Không có Chrome; đang dùng Chromium riêng của app (không phải Chrome chính hãng)."}
+            return {"status": "PASS", "detail": t("No Chrome; using the app's own Chromium (not official Chrome).")}
         fixable = paths.CHROMIUM_ZIP.is_file()
         return {
             "status": "FAIL",
-            "detail": "Không tìm thấy Chrome." if fixable else "Không tìm thấy Chrome và gói này không kèm Chromium.",
+            "detail": t("Chrome was not found.") if fixable else t("Chrome was not found, and this package has no Chromium."),
             "fixable": fixable,
             "size_mb": round(paths.CHROMIUM_ZIP.stat().st_size / 1048576) if fixable else 0,
         }
@@ -71,21 +73,21 @@ class SetupManager:
             paths.data_dir().mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(dir=paths.data_dir(), prefix="write_test_"):
                 pass
-            return {"status": "PASS", "detail": "Ghi được vào thư mục data."}
+            return {"status": "PASS", "detail": t("Can write to the data folder.")}
         except OSError as error:
-            return {"status": "FAIL", "detail": f"Không ghi được vào thư mục data: {error}"}
+            return {"status": "FAIL", "detail": t("Cannot write to the data folder: {error}", error=error)}
 
     def status(self):
         items = [
-            {"id": "python", "title": "Python riêng của app", **self.check_python()},
-            {"id": "libraries", "title": "Thư viện", **self.check_libraries()},
-            {"id": "browser", "title": "Trình duyệt", **self.check_browser()},
-            {"id": "write", "title": "Quyền ghi", **self.check_write()},
+            {"id": "python", "title": t("The app's own Python"), **self.check_python()},
+            {"id": "libraries", "title": t("Libraries"), **self.check_libraries()},
+            {"id": "browser", "title": t("Browser"), **self.check_browser()},
+            {"id": "write", "title": t("Write access"), **self.check_write()},
         ]
         for key, (_, title) in SELF_TESTS.items():
-            result = self.self_tests.get(key) or {"status": "NOT_RUN", "detail": "Chưa thử."}
-            items.append({"id": key, "title": title, **result})
-        return {"items": items, "busy": self.busy, "message": self.message, "ready": self.ready(items)}
+            result = self.self_tests.get(key) or {"status": "NOT_RUN", "detail": t("Not tried yet.")}
+            items.append({"id": key, "title": t(title), **result})
+        return {"items": items, "busy": self.busy, "message": self.message, "failed": self.failed, "ready": self.ready(items)}
 
     @staticmethod
     def ready(items):
@@ -100,18 +102,20 @@ class SetupManager:
                 return False
             self.busy = label
             self.message = label
-        self.log.add("info", f"Setup: {label}")
+            self.failed = False
+        self.log.add("info", t("Setup: {detail}", detail=label))
 
         def run():
             try:
                 work()
             except Exception as error:
-                self.message = f"Lỗi: {error}"
-                self.log.add("error", f"Setup: {error}")
+                self.failed = True
+                self.message = t("Error: {error}", error=error)
+                self.log.add("error", t("Setup: {detail}", detail=error))
             else:
-                self.message = "Đã xong."
-                results = ", ".join(f"{SELF_TESTS[key][1]}: {item['status']}" for key, item in self.self_tests.items())
-                self.log.add("info", f"Setup xong. {results}".strip())
+                self.message = t("Done.")
+                results = ", ".join(f"{t(SELF_TESTS[key][1])}: {item['status']}" for key, item in self.self_tests.items())
+                self.log.add("info", t("Setup finished. {results}", results=results).strip())
             finally:
                 self.busy = None
 
@@ -119,10 +123,10 @@ class SetupManager:
         return True
 
     def start_install(self):
-        return self._start("Đang cài...", self._install)
+        return self._start(t("Installing..."), self._install)
 
     def start_self_tests(self):
-        return self._start("Đang kiểm tra...", self._run_self_tests)
+        return self._start(t("Checking..."), self._run_self_tests)
 
     def _install(self):
         self.install_missing()
@@ -135,14 +139,14 @@ class SetupManager:
             self._install_libraries()
         if self.check_browser()["status"] != "PASS":
             if paths.CHROMIUM_ZIP.is_file():
-                self.message = "Đang giải nén Chromium..."
+                self.message = t("Unpacking Chromium...")
                 self._install_chromium()
         return self.check_libraries()["status"] == "PASS"
 
     def _install_libraries(self):
         if not paths.WHEELS_DIR.is_dir() or not paths.REQUIREMENTS_FILE.is_file():
-            raise RuntimeError("Gói cài thiếu thư mục offline/wheels.")
-        self.message = "Đang cài thư viện..."
+            raise RuntimeError(t("The package has no offline/wheels folder."))
+        self.message = t("Installing libraries...")
         paths.SITE_DIR.mkdir(parents=True, exist_ok=True)
         returncode, output, timed_out = setup_checks.run_with_timeout(
             [
@@ -154,10 +158,10 @@ class SetupManager:
             600,
         )
         if timed_out:
-            raise RuntimeError("Cài thư viện quá thời gian.")
+            raise RuntimeError(t("Installing the libraries took too long."))
         if returncode != 0:
-            tail = output.strip().splitlines()[-1] if output.strip() else "không rõ"
-            raise RuntimeError(f"Không cài được thư viện: {tail}")
+            tail = output.strip().splitlines()[-1] if output.strip() else t("unknown")
+            raise RuntimeError(t("Could not install the libraries: {error}", error=tail))
         paths.activate_site()
 
     def _install_chromium(self):
@@ -168,12 +172,12 @@ class SetupManager:
 
     def _run_self_tests(self):
         for key, (test, title) in SELF_TESTS.items():
-            self.message = f"Đang thử: {title}..."
+            self.message = t("Trying: {name}...", name=t(title))
             self.self_tests[key] = self._self_test(test)
 
     def _self_test(self, test):
         session = WorkerSession({"action": "selftest", "test": test})
-        result = {"status": "FAIL", "detail": "Không nhận được kết quả."}
+        result = {"status": "FAIL", "detail": t("No result was received.")}
 
         def on_event(event):
             if event.get("type") == "selftest":
@@ -186,7 +190,7 @@ class SetupManager:
         session.start()
         if not session.wait(SELF_TEST_TIMEOUT):
             session.kill()
-            return {"status": "FAIL", "detail": f"Quá {SELF_TEST_TIMEOUT} giây, có thể bị chặn."}
+            return {"status": "FAIL", "detail": t("Took more than {seconds} s; it may be blocked.", seconds=SELF_TEST_TIMEOUT)}
         return result
 
 

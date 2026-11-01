@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 
 from . import paths
+from .i18n import t
 
 SUPPORTED = (".xlsx", ".xlsm")
 
@@ -49,22 +50,22 @@ def _open(path, **options):
 
     path = Path(path)
     if not path.is_file():
-        raise ExcelError(f"Không tìm thấy file: {path}")
+        raise ExcelError(t("File not found: {path}", path=path))
     if path.suffix.lower() == ".xls":
-        raise ExcelError("File .xls cũ không đọc được. Hãy mở trong Excel và lưu lại thành .xlsx.")
+        raise ExcelError(t("Old .xls files cannot be read. Open it in Excel and save it as .xlsx."))
     if path.suffix.lower() not in SUPPORTED:
-        raise ExcelError(f"Chỉ hỗ trợ file {', '.join(SUPPORTED)}.")
+        raise ExcelError(t("Only {types} files are supported.", types=", ".join(SUPPORTED)))
     try:
         return load_workbook(path, **options)
     except PermissionError as error:
-        raise ExcelError(f"Không mở được file: {error}") from error
+        raise ExcelError(t("Could not open the file: {error}", error=error)) from error
     except Exception as error:
-        raise ExcelError(f"File Excel bị lỗi hoặc không đọc được: {error}") from error
+        raise ExcelError(t("The Excel file is damaged or cannot be read: {error}", error=error)) from error
 
 
 def _sheet(workbook, name):
     if name not in workbook.sheetnames:
-        raise ExcelError(f"Không có sheet '{name}'.")
+        raise ExcelError(t("There is no sheet '{name}'.", name=name))
     return workbook[name]
 
 
@@ -116,7 +117,7 @@ def read_rows(path, sheet_name, start_row=2, end_row=None, required=(), stop_col
     for row in rows:
         missing = [column for column in required if not row.values.get(column)]
         if missing:
-            row.skip_reason = "Thiếu giá trị ở cột " + ", ".join(missing)
+            row.skip_reason = t("Missing a value in column {columns}", columns=", ".join(missing))
     return rows
 
 

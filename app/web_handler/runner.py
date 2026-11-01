@@ -7,11 +7,18 @@ import time
 from . import flow as flow_module
 from . import templating
 from .browser_errors import BrowserClosed
+from .i18n import t
 
 STATUS_OK = "OK"
-STATUS_FAILED = "Lỗi"
-STATUS_SKIPPED = "Bỏ qua"
-STATUS_UNKNOWN = "Chưa rõ"
+STATUS_FAILED = "Failed"
+STATUS_SKIPPED = "Skipped"
+STATUS_UNKNOWN = "Unclear"
+# Journals written before the interface had two languages.
+OLD_STATUSES = {
+    "L\u1ed7i": STATUS_FAILED,
+    "B\u1ecf qua": STATUS_SKIPPED,
+    "Ch\u01b0a r\u00f5": STATUS_UNKNOWN,
+}
 
 
 class StepError(Exception):
@@ -66,14 +73,14 @@ def load_journal(path):
             started.add(record["row"])
         elif kind == "row_end":
             started.discard(record["row"])
-            state.statuses[record["row"]] = record["status"]
+            state.statuses[record["row"]] = OLD_STATUSES.get(record["status"], record["status"])
             state.messages[record["row"]] = record.get("message", "")
             state.written[record["row"]] = record.get("written", {})
         elif kind == "finish":
             state.finished = True
     for row in started:
         state.statuses[row] = STATUS_UNKNOWN
-        state.messages[row] = "Hàng đang chạy dở khi app dừng; có thể đã ghi xong."
+        state.messages[row] = t("This row was running when the app stopped; it may already be written.")
     return state
 
 
@@ -129,7 +136,7 @@ class Runner:
         if kind == "goto":
             status = self.driver.goto(render("url"), self.navigation_timeout)
             if status and status >= 400:
-                self.emit_log("warn", f"Trang trả về HTTP {status}.")
+                self.emit_log("warn", t("The page returned HTTP {status}.", status=status))
         elif kind == "fill":
             self.driver.fill(target, render("value"), self.step_timeout)
         elif kind == "click":
@@ -152,11 +159,11 @@ class Runner:
         elif kind == "verify":
             self.verify(step, render)
         elif kind == "manual_pause":
-            self.wait_for_user(step.get("message") or "Làm tay xong rồi bấm Continue.")
+            self.wait_for_user(step.get("message") or t("Do this by hand, then click Continue."))
         else:
-            raise StepError(f"Không biết loại bước {kind!r}.")
+            raise StepError(t("Unknown block type {kind}.", kind=repr(kind)))
         for fallback in self.driver.take_fallback_notices():
-            self.emit_log("warn", f"Dùng cách nhận diện dự phòng: {fallback}")
+            self.emit_log("warn", t("Using a fallback way to find the element: {fallback}", fallback=fallback))
 
     def store_read(self, step, value):
         if step.get("save_to_var"):
@@ -172,21 +179,21 @@ class Runner:
         if step.get("url_contains"):
             expected = render("url_contains")
             if expected not in url:
-                raise StepError(f"URL không chứa '{expected}'.")
+                raise StepError(t("The URL does not contain '{expected}'.", expected=expected))
         if step.get("url_not_contains"):
             expected = render("url_not_contains")
             if expected in url:
-                raise StepError(f"URL vẫn chứa '{expected}'.")
+                raise StepError(t("The URL still contains '{expected}'.", expected=expected))
         if step.get("equals") not in (None, ""):
             expected = render("equals")
             actual = self.driver.read(step["target"], self.step_timeout)
             if actual != expected:
-                raise StepError(f"Mong đợi '{expected}', thực tế '{actual}'.")
+                raise StepError(t("Expected '{expected}', found '{actual}'.", expected=expected, actual=actual))
         if step.get("contains") not in (None, ""):
             expected = render("contains")
             actual = self.driver.read(step["target"], self.step_timeout)
             if expected not in actual:
-                raise StepError(f"'{actual}' không chứa '{expected}'.")
+                raise StepError(t("'{actual}' does not contain '{expected}'.", expected=expected, actual=actual))
 
     # Helpers
 
@@ -244,7 +251,7 @@ class Runner:
                 written=self.written, screenshot=screenshot,
             )
         if self.writer and row is not None:
-            text = status if not message else f"{status}: {message}"
+            text = t(status) if not message else f"{t(status)}: {message}"
             self.writer.set_status(row.number, text)
             self.writer.row_finished()
         self.emit({
@@ -273,10 +280,10 @@ class Runner:
                 })
                 self.run_step(current)
         except BrowserClosed:
-            self.finish_row(key, row, STATUS_UNKNOWN, "Trình duyệt bị đóng giữa chừng.")
+            self.finish_row(key, row, STATUS_UNKNOWN, t("The browser was closed partway through."))
             raise
         except RunStopped:
-            self.finish_row(key, row, STATUS_UNKNOWN, "Dừng trong lúc chờ làm tay.")
+            self.finish_row(key, row, STATUS_UNKNOWN, t("Stopped during a wait."))
             raise
         except Exception as error:
             label = flow_module.step_label(current) if current else ""
@@ -301,7 +308,7 @@ class Runner:
                 consecutive += 1
                 if self.pause_after and consecutive >= self.pause_after:
                     self.wait_for_user(
-                        f"{consecutive} hàng lỗi liên tiếp. Có thể đã hết phiên đăng nhập hoặc trang đã đổi."
+                        t("{count} rows failed in a row. The login may have expired or the page may have changed.", count=consecutive)
                     )
                     consecutive = 0
             elif outcome is True:
@@ -322,7 +329,7 @@ class Runner:
             except Exception as error:
                 # Nothing has been touched yet, so nothing is worth continuing for.
                 self.screenshot("before_loop")
-                raise StepError(f"Bước trước vùng lặp lỗi, đã dừng: {self.describe(error)}") from error
+                raise StepError(t("A block before the loop failed, so the run stopped: {error}", error=self.describe(error))) from error
             if loop:
                 self.run_loop(loop)
                 try:
@@ -331,14 +338,14 @@ class Runner:
                     raise
                 except Exception as error:
                     self.screenshot("after_loop")
-                    self.emit_log("error", f"Bước sau vùng lặp lỗi: {self.describe(error)}")
+                    self.emit_log("error", t("A block after the loop failed: {error}", error=self.describe(error)))
                     outcome = "after_loop_failed"
                     message = self.describe(error)
         except RunStopped:
             outcome = "stopped"
         except BrowserClosed:
             outcome = "browser_closed"
-            message = "Trình duyệt bị đóng giữa chừng."
+            message = t("The browser was closed partway through.")
         except StepError as error:
             outcome = "failed"
             message = self.context.mask(str(error))

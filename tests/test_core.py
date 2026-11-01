@@ -9,8 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 sys.path.insert(0, str(ROOT / "runtime" / "site"))
 
-from web_handler import excel, flow as flow_module, flow_templates, runner, templating, worker
+from web_handler import excel, flow as flow_module, flow_templates, i18n, runner, templating, worker
 from web_handler.browser_errors import BrowserClosed, ElementError
+
+i18n.use("en")
 
 
 def target(selector, verified=True):
@@ -81,48 +83,48 @@ class ValidateTests(unittest.TestCase):
         flow["steps"][0]["url"] = ""
         flow["steps"][1]["target"] = None
         errors, _ = self.messages(flow)
-        self.assertTrue(any("chưa có link" in item for item in errors))
-        self.assertTrue(any("chưa có phần tử" in item for item in errors))
+        self.assertTrue(any("has no link" in item for item in errors))
+        self.assertTrue(any("has no element" in item for item in errors))
 
     def test_missing_column_blocks_the_run(self):
         errors, _ = self.messages(valid_flow(), flow_module.CheckContext(columns={"B"}))
-        self.assertTrue(any("không có cột A" in item for item in errors))
+        self.assertTrue(any("has no column A" in item for item in errors))
 
     def test_column_in_count_flow_blocks_the_run(self):
         flow = valid_flow()
         flow["steps"][2].update(source="count", count=3)
         errors, _ = self.messages(flow)
-        self.assertTrue(any("Cột A chỉ dùng được" in item for item in errors))
+        self.assertTrue(any("Column A only works" in item for item in errors))
 
     def test_column_outside_loop_blocks_the_run(self):
         flow = valid_flow()
         flow["steps"][0]["url"] = "{{A}}"
         errors, _ = self.messages(flow)
-        self.assertTrue(any("Cột A chỉ dùng được" in item for item in errors))
+        self.assertTrue(any("Column A only works" in item for item in errors))
 
     def test_unsaved_secret_blocks_the_run(self):
         errors, _ = self.messages(valid_flow(), flow_module.CheckContext(secret_exists=lambda name: False))
-        self.assertTrue(any("Bí mật pw" in item for item in errors))
+        self.assertTrue(any("Secret pw" in item for item in errors))
 
     def test_variable_used_before_read_blocks_the_run(self):
         flow = valid_flow()
         loop = flow["steps"][2]["steps"]
         loop[1], loop[2] = loop[2], loop[1]
         errors, _ = self.messages(flow)
-        self.assertTrue(any("trước khi đọc" in item for item in errors))
+        self.assertTrue(any("before it is read" in item for item in errors))
 
     def test_two_loops_block_the_run(self):
         flow = valid_flow()
         flow["steps"].append({"id": "s9", "do": "loop", "source": "count", "count": 1, "steps": [flow["steps"][0]]})
         errors, _ = self.messages(flow)
-        self.assertTrue(any("một vùng lặp" in item for item in errors))
+        self.assertTrue(any("one loop" in item for item in errors))
 
     def test_unverified_element_only_warns(self):
         flow = valid_flow()
         flow["steps"][1]["target"]["verified"] = False
         errors, warnings = self.messages(flow)
         self.assertEqual(errors, [])
-        self.assertTrue(any("chưa kiểm chứng" in item for item in warnings))
+        self.assertTrue(any("not been checked" in item for item in warnings))
 
     def test_secret_on_http_page_warns(self):
         flow = valid_flow()
@@ -132,7 +134,7 @@ class ValidateTests(unittest.TestCase):
 
     def test_status_column_with_data_warns(self):
         _, warnings = self.messages(valid_flow(), flow_module.CheckContext(nonempty_columns={"D"}))
-        self.assertTrue(any("Cột trạng thái D" in item for item in warnings))
+        self.assertTrue(any("Status column D" in item for item in warnings))
 
 
 class ExcelTests(unittest.TestCase):
@@ -219,7 +221,7 @@ class ExcelTests(unittest.TestCase):
         self.assertEqual(rows[0].skip_reason, "")
 
     def test_missing_sheet_and_xls_have_clear_errors(self):
-        with self.assertRaisesRegex(excel.ExcelError, "Không có sheet"):
+        with self.assertRaisesRegex(excel.ExcelError, "There is no sheet"):
             excel.read_rows(self.path, "Khac", 2)
         old = self.path.with_suffix(".xls")
         old.write_bytes(b"x")
@@ -406,7 +408,7 @@ class RunnerTests(unittest.TestCase):
         driver = FakeDriver(fail_on={("goto", "https://example.test/login"): "hỏng"})
         outcome, message = self.run_flow(row_flow(), driver, rows_of(3))
         self.assertEqual(outcome, "failed")
-        self.assertIn("trước vùng lặp", message)
+        self.assertIn("before the loop", message)
         self.assertEqual(self.statuses(), {})
         self.assertEqual(len(driver.calls), 1)
 
@@ -414,7 +416,7 @@ class RunnerTests(unittest.TestCase):
         driver = FakeDriver(fail_on={("fill", "name2"): "không tìm thấy"})
         outcome, _ = self.run_flow(row_flow(), driver, rows_of(2))
         self.assertEqual(outcome, "finished")
-        self.assertEqual(self.statuses(), {2: "Lỗi", 3: "OK"})
+        self.assertEqual(self.statuses(), {2: "Failed", 3: "OK"})
         event = next(item for item in self.events if item["type"] == "row_done" and item["row"] == 2)
         self.assertIn("không tìm thấy", event["message"])
         self.assertTrue((self.dir / event["screenshot"]).exists())
@@ -426,7 +428,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_skipped_rows_do_not_touch_the_browser(self):
         self.run_flow(row_flow(), rows=rows_of(2, skip={2}))
-        self.assertEqual(self.statuses(), {2: "Bỏ qua", 3: "OK"})
+        self.assertEqual(self.statuses(), {2: "Skipped", 3: "OK"})
         self.assertNotIn(("goto", None, "https://example.test/2"), self.driver.calls)
 
     def test_consecutive_failures_pause_and_stop_on_request(self):
@@ -460,7 +462,7 @@ class RunnerTests(unittest.TestCase):
         driver = FakeDriver(close_on={"name3"})
         outcome, _ = self.run_flow(row_flow(), driver, rows_of(4))
         self.assertEqual(outcome, "browser_closed")
-        self.assertEqual(self.statuses(), {2: "OK", 3: "Chưa rõ"})
+        self.assertEqual(self.statuses(), {2: "OK", 3: "Unclear"})
 
     def test_secret_is_masked_in_errors_and_logs(self):
         flow = {"steps": [{"id": "s0", "do": "loop", "source": "count", "count": 1, "steps": [
@@ -477,7 +479,7 @@ class RunnerTests(unittest.TestCase):
             {"id": "s1", "do": "verify", "target": target("#n"), "equals": "{{C}}"},
         ]}]}
         self.run_flow(flow, FakeDriver(values={"#n": "name2"}), rows_of(2))
-        self.assertEqual(self.statuses(), {2: "OK", 3: "Lỗi"})
+        self.assertEqual(self.statuses(), {2: "OK", 3: "Failed"})
 
     def test_verify_url(self):
         flow = {"steps": [{"id": "s1", "do": "verify", "url_not_contains": "/login"}]}
@@ -526,7 +528,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(outcome, "finished")
         self.assertEqual(control.waited, [1.5])
         self.assertIn({"type": "waiting", "step": "s1", "seconds": 1.5}, self.events)
-        self.assertEqual([event["label"] for event in self.events if event["type"] == "step"], ["Wait 1.5 giây"])
+        self.assertEqual([event["label"] for event in self.events if event["type"] == "step"], ["Wait 1.5 s"])
 
     def test_cancelled_wait_stops_the_run(self):
         control = ScriptedControl()
@@ -590,7 +592,7 @@ class WaitValidationTests(unittest.TestCase):
     def test_missing_or_non_positive_seconds_are_rejected(self):
         for seconds in (None, 0, -1, "3", True):
             with self.subTest(seconds=seconds):
-                self.assertEqual(self.errors_for(seconds), ["Khối Wait cần số giây lớn hơn 0."])
+                self.assertEqual(self.errors_for(seconds), ["The Wait block needs a number of seconds above 0."])
 
 
 class FlowTemplateTests(unittest.TestCase):
@@ -653,13 +655,13 @@ class JournalTests(unittest.TestCase):
         with self.path.open("a", encoding="utf-8") as file:
             file.write('{"type": "row_e')
         state = runner.load_journal(self.path)
-        self.assertEqual(state.statuses, {2: "OK", 3: "Chưa rõ"})
+        self.assertEqual(state.statuses, {2: "OK", 3: "Unclear"})
         self.assertEqual(state.meta["flow_hash"], "h")
         self.assertFalse(state.finished)
 
     def test_row_selection_modes(self):
         rows = rows_of(5)
-        previous = {2: "OK", 3: "Lỗi", 4: "Chưa rõ"}
+        previous = {2: "OK", 3: "Failed", 4: "Unclear"}
         numbers = lambda chosen: [row.number for row in chosen]
         self.assertEqual(numbers(runner.select_rows(rows, previous, "resume")), [5, 6])
         self.assertEqual(numbers(runner.select_rows(rows, previous, "retry")), [3])

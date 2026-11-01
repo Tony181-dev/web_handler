@@ -54,7 +54,7 @@ class ReadElementTests(unittest.TestCase):
             with self.subTest(element_id):
                 info = html_reader.read_element(f'<input id="{element_id}" name="stable">')
                 self.assertEqual(info["selector"], 'input[name="stable"]')
-                self.assertTrue(any("tự sinh" in item for item in info["warnings"]))
+                self.assertTrue(any("auto-generated" in item for item in info["warnings"]))
 
     def test_id_with_special_characters_is_quoted(self):
         self.assertEqual(html_reader.read_element('<input id="a.b:c">')["selector"], '[id="a.b:c"]')
@@ -78,7 +78,7 @@ class ReadElementTests(unittest.TestCase):
 
     def test_hidden_inline_style_warns(self):
         info = html_reader.read_element('<input id="x" style="display: none">')
-        self.assertTrue(any("ẩn" in item for item in info["warnings"]))
+        self.assertTrue(any("hidden" in item for item in info["warnings"]))
 
 
 class ReadPageTests(unittest.TestCase):
@@ -107,7 +107,7 @@ class ReadPageTests(unittest.TestCase):
         for button in buttons:
             self.assertEqual(button["match_count"], 1)
             self.assertIn(" > ", button["selector"])
-            self.assertTrue(any("vị trí" in item for item in button["warnings"]))
+            self.assertTrue(any("position" in item for item in button["warnings"]))
         self.assertNotEqual(buttons[0]["selector"], buttons[1]["selector"])
 
     def test_structural_path_matches_exactly_one_element(self):

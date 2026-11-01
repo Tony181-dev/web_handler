@@ -12,6 +12,7 @@ import webbrowser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from web_handler import paths, server  # noqa: E402
+from web_handler.i18n import t  # noqa: E402
 
 CTRL_C_EVENT = 0
 HANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
@@ -31,7 +32,7 @@ def shut_down_when_console_closes(app):
     def on_console_event(event):
         if event == CTRL_C_EVENT:
             return False
-        app.log.add("info", "Đang tắt app.")
+        app.log.add("info", t("Closing the app."))
         app.jobs.shutdown()
         os._exit(0)
 
@@ -43,9 +44,9 @@ def shut_down_when_console_closes(app):
 
 def stop():
     if server.stop_saved_instance():
-        say("Web Handler đã tắt.")
+        say(t("Web Handler has closed."))
         return 0
-    say("Không tắt được Web Handler đang chạy.")
+    say(t("Could not close the running Web Handler."))
     return 1
 
 
@@ -54,13 +55,13 @@ def install():
     from web_handler.system_log import SystemLog
 
     paths.activate_site()
-    say("Đang cài thư viện và trình duyệt dự phòng...")
+    say(t("Installing the libraries and the spare browser..."))
     try:
         ready = SetupManager(SystemLog()).install_missing()
     except Exception as error:
-        say(f"Chưa cài xong: {error}")
+        say(t("Not finished installing: {error}", error=error))
         return 1
-    say("Đã cài xong." if ready else "Chưa cài xong. Hãy mở màn hình Setup của app.")
+    say(t("Installed.") if ready else t("Not finished installing. Open the app's Setup screen."))
     return 0 if ready else 1
 
 
@@ -72,7 +73,7 @@ def main():
     no_browser = "--no-browser" in sys.argv
     existing = server.running_instance()
     if existing:
-        say("Web Handler đang chạy rồi. Đang mở lại giao diện.")
+        say(t("Web Handler is already running. Opening its page again."))
         if not no_browser:
             webbrowser.open(existing)
         return 0
@@ -83,9 +84,9 @@ def main():
     instance, app = server.create_server()
     shut_down_when_console_closes(app)
     url = f"http://127.0.0.1:{app.port}/?key={app.key}"
-    say("Web Handler đang chạy.")
-    say("Giữ cửa sổ này mở trong lúc dùng app. Đóng cửa sổ này để tắt app.")
-    say(f"Nếu trình duyệt không tự mở, hãy dán địa chỉ này vào trình duyệt:\n{url}\n")
+    say(t("Web Handler is running."))
+    say(t("Keep this window open while using the app. Close it to close the app."))
+    say(t("If the browser does not open by itself, paste this address into it:") + f"\n{url}\n")
     if not no_browser:
         webbrowser.open(url)
     try:

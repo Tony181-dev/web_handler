@@ -14,8 +14,9 @@ import time
 import traceback
 
 from . import browser as browser_module
-from . import excel, flow as flow_module, html_reader, recorder as recorder_module, runner, secret_store, templating
+from . import excel, flow as flow_module, html_reader, i18n, recorder as recorder_module, runner, secret_store, templating
 from .browser_errors import BrowserClosed, ElementError
+from .i18n import t
 
 EVENT_PREFIX = "@@"
 
@@ -64,7 +65,7 @@ class PipeLines:
                 self.buffer = b"".join(line.encode("utf-8") + b"\n" for line in lines[1:]) + self.buffer
                 return lines[0]
             if self.closed:
-                raise EOFError("Không nhận được việc cần làm.")
+                raise EOFError(t("No job was received."))
             time.sleep(0.02)
 
 
@@ -169,7 +170,7 @@ def run_flow(job, commands):
             if number not in selected:
                 journal.write(
                     type="row_end", row=number, status=status,
-                    message="(từ lần chạy trước)", written=previous_written.get(number) or {},
+                    message=t("(from the previous run)"), written=previous_written.get(number) or {},
                 )
 
     driver = browser_module.ChromeDriver()
@@ -195,7 +196,7 @@ def run_flow(job, commands):
             try:
                 result_file = str(writer.save())
             except Exception as error:
-                emit({"type": "log", "level": "error", "text": f"Không lưu được file kết quả: {error}"})
+                emit({"type": "log", "level": "error", "text": t("Could not save the result file: {error}", error=error)})
             writer.close()
         journal.write(type="finish", outcome=outcome, message=message, result_file=result_file)
         journal.close()
@@ -273,7 +274,7 @@ def needs_excel_row(step):
 def first_usable_row(flow, excel_path):
     settings = flow.get("excel") or {}
     if not excel_path or not settings.get("sheet"):
-        raise ValueError("Khối trong vùng lặp cần dữ liệu Excel. Hãy bấm Select Excel trước.")
+        raise ValueError(t("Blocks in the loop need Excel data. Click Select Excel first."))
     rows = excel.read_rows(
         excel_path, settings["sheet"], settings.get("start_row", 2),
         settings.get("end_row"), settings.get("required") or (), flow_module.stop_column(flow),
@@ -281,7 +282,7 @@ def first_usable_row(flow, excel_path):
     for row in rows:
         if not row.skip_reason:
             return row
-    raise ValueError("Không có hàng Excel nào để chạy trong dải đã chọn.")
+    raise ValueError(t("There are no Excel rows to run in the chosen range."))
 
 
 def run_up_to(driver, commands, command, progress):
@@ -375,7 +376,7 @@ def run_recording(job, commands):
         except BrowserClosed:
             raise
         except Exception as error:
-            emit({"type": "recorder_warning", "text": f"Không mở được link: {str(error).splitlines()[0]}"})
+            emit({"type": "recorder_warning", "text": t("Could not open the link: {error}", error=str(error).splitlines()[0])})
     try:
         while driver.is_open():
             command = commands.next(driver, 0.15)
@@ -407,6 +408,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     pipe = PipeLines()
     job = json.loads(pipe.read_first_line())
+    i18n.use(job.get("language"))
     commands = Commands(pipe)
     try:
         return ACTIONS[job["action"]](job, commands)

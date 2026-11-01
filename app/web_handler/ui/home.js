@@ -17,27 +17,27 @@ async function renderHome() {
 
   fill(page,
     el('div.page-head', null,
-      el('h1', { text: 'Quy trình của bạn' }),
+      el('h1', { text: t('Your flows') }),
       el('div.spacer'),
-      el('button.btn.primary', { id: 'new-flow', text: '+ New flow', onclick: () => openNewFlow(templates) })),
+      el('button.btn.primary', { id: 'new-flow', text: t('+ New flow'), onclick: () => openNewFlow(templates) })),
     el('div.demo-card', null,
       el('div', null,
-        el('h2', { text: 'Thử ngay với trang demo' }),
-        el('p.muted', { text: 'Quy trình đăng nhập, đổi tên hàng loạt từ Excel trên một trang web nhỏ có trong app. Không đụng tới hệ thống thật.' })),
-      el('button.btn', { id: 'open-demo', text: 'Open sample flow', onclick: openDemo })),
+        el('h2', { text: t('Try it on the demo site') }),
+        el('p.muted', { text: t('A flow that logs in and renames items from Excel, on a small website built into the app. It does not touch any real system.') })),
+      el('button.btn', { id: 'open-demo', text: t('Open sample flow'), onclick: openDemo })),
     list);
 
   if (!flows.length) {
-    list.append(el('div.card.empty', { text: 'Chưa có quy trình nào. Hãy tạo mới hoặc mở quy trình mẫu.' }));
+    list.append(el('div.card.empty', { text: t('No flows yet. Create one or open the sample flow.') }));
   }
   for (const flow of flows) {
     const open = () => { location.hash = '#/flow/' + flow.id; };
     list.append(el('div.card.flow-item', { 'data-flow': flow.id },
       el('button.name', { text: flow.name, onclick: open }),
-      el('span.muted', { text: `${flow.steps} bước` }),
-      el('button.btn.small', { text: 'Open', onclick: open }),
+      el('span.muted', { text: t('{count} block(s)', { count: flow.steps }) }),
+      el('button.btn.small', { text: t('Open'), onclick: open }),
       el('button.btn.small', {
-        text: 'Duplicate',
+        text: t('Duplicate'),
         onclick: async () => {
           try {
             await api('POST', `/api/flows/${flow.id}/duplicate`);
@@ -46,9 +46,9 @@ async function renderHome() {
         },
       }),
       el('button.btn.small.danger', {
-        text: 'Delete',
+        text: t('Delete'),
         onclick: async () => {
-          if (!await confirmBox('Xóa quy trình?', `Xóa "${flow.name}". Không hoàn tác được.`, 'Delete', 'danger')) return;
+          if (!await confirmBox(t('Delete this flow?'), t('Delete "{name}". This cannot be undone.', { name: flow.name }), t('Delete'), 'danger')) return;
           try {
             await api('DELETE', `/api/flows/${flow.id}`);
             renderHome();
@@ -59,7 +59,7 @@ async function renderHome() {
 }
 
 function openNewFlow(templates) {
-  const name = el('input', { type: 'text', id: 'new-flow-name', placeholder: 'Để trống thì đặt tên tự động' });
+  const name = el('input', { type: 'text', id: 'new-flow-name', placeholder: t('Leave empty to name it automatically') });
   let creating = false;
   const create = async template => {
     // One click creates the flow at once, so a double click must not create two.
@@ -78,14 +78,14 @@ function openNewFlow(templates) {
     el('button.btn', { 'data-template': id, text: label, onclick: () => create(template) }),
     el('span.muted', { text: hint }));
   const box = openModal({
-    title: 'Quy trình mới',
+    title: t('New flow'),
     body: el('div', null,
-      el('div.field', null, el('label.field-label', { text: 'Tên quy trình', for: 'new-flow-name' }), name),
-      el('p.section-label', { text: 'Chọn cách bắt đầu' }),
+      el('div.field', null, el('label.field-label', { text: t('Flow name'), for: 'new-flow-name' }), name),
+      el('p.section-label', { text: t('Choose how to start') }),
       el('div.template-list', null,
-        choice('blank', 'Blank flow', 'Quy trình trống, tự kéo khối hoặc bấm Record.', null),
+        choice('blank', t('Blank flow'), t('An empty flow: drag blocks in yourself or click Record.'), null),
         templates.map(item => choice(item.id, item.label, item.hint, item.id)))),
-    actions: [{ label: 'Cancel' }],
+    actions: [{ label: t('Cancel') }],
   });
   name.addEventListener('keydown', event => { if (event.key === 'Enter') create(null); });
 }
@@ -95,50 +95,50 @@ async function openDemo() {
     const demo = await api('POST', '/api/demo');
     memory.set('excel.' + demo.id, demo.excel_path);
     location.hash = '#/flow/' + demo.id;
-    toast('Đã mở quy trình mẫu. Bấm Run once hoặc Run để xem kết quả.');
+    toast(t('Sample flow opened. Click Run once or Run to see the result.'));
   } catch (error) { showError(error); }
 }
 
 function openSecrets() {
   const list = el('div');
-  const nameInput = el('input', { type: 'text', id: 'secret-name', placeholder: 'vd: mat_khau_cong_ty' });
+  const nameInput = el('input', { type: 'text', id: 'secret-name', placeholder: t('e.g. company_password') });
   const valueInput = el('input', { type: 'password', id: 'secret-value', autocomplete: 'new-password' });
   const reload = async () => {
     const { names } = await api('GET', '/api/secrets');
     list.replaceChildren(names.length ? el('table.data', null, names.map(name => el('tr', null,
       el('td', null, el('code', { text: name })),
       el('td', { style: 'text-align:right' },
-        el('button.btn.small', { text: 'Change value', onclick: () => { nameInput.value = name; valueInput.focus(); } }), ' ',
+        el('button.btn.small', { text: t('Change value'), onclick: () => { nameInput.value = name; valueInput.focus(); } }), ' ',
         el('button.btn.small.danger', {
-          text: 'Delete',
+          text: t('Delete'),
           onclick: async () => {
             try {
               await api('DELETE', '/api/secrets/' + encodeURIComponent(name));
               reload();
             } catch (error) { showError(error); }
           },
-        }))))) : el('p.muted', { text: 'Chưa có bí mật nào.' }));
+        }))))) : el('p.muted', { text: t('No secrets yet.') }));
   };
   const save = async () => {
     try {
       await api('POST', '/api/secrets', { name: nameInput.value.trim(), value: valueInput.value });
       nameInput.value = '';
       valueInput.value = '';
-      toast('Đã lưu vào Windows Credential Manager.');
+      toast(t('Saved to Windows Credential Manager.'));
       reload();
       if (window.onSecretsChanged) window.onSecretsChanged();
     } catch (error) { showError(error); }
   };
   openModal({
-    title: 'Bí mật (mật khẩu, tài khoản)',
+    title: t('Secrets (passwords, accounts)'),
     body: el('div', null,
-      el('p.muted', { text: 'Giá trị được giữ trong Windows Credential Manager và không hiển thị lại. File quy trình chỉ chứa tên, ví dụ {{secret:mat_khau}}.', style: 'margin-bottom:12px' }),
+      el('p.muted', { text: t('Values are kept in Windows Credential Manager and never shown again. The flow file holds only the name, for example {{secret:password}}.'), style: 'margin-bottom:12px' }),
       list,
       el('div.divider'),
-      el('div.field', null, el('label.field-label', { text: 'Tên', for: 'secret-name' }), nameInput),
-      el('div.field', null, el('label.field-label', { text: 'Giá trị', for: 'secret-value' }), valueInput),
-      el('button.btn.primary', { id: 'secret-save', text: 'Save secret', onclick: save })),
-    actions: [{ label: 'Close', id: 'close' }],
+      el('div.field', null, el('label.field-label', { text: t('Name'), for: 'secret-name' }), nameInput),
+      el('div.field', null, el('label.field-label', { text: t('Value'), for: 'secret-value' }), valueInput),
+      el('button.btn.primary', { id: 'secret-save', text: t('Save secret'), onclick: save })),
+    actions: [{ label: t('Close'), id: 'close' }],
   });
   reload().catch(showError);
 }

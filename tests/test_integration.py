@@ -203,15 +203,15 @@ class InspectorTests(IntegrationBase):
         # A real click would have opened the popup, and the field inside would be usable.
         reply, _ = self.ask(flow, ["s1", "s2", "s3", "s4", "s5"], "#popup-input", "fill")
         self.assertEqual(reply["count"], 1)
-        self.assertIn("bị ẩn", reply["problem"])
+        self.assertIn("hidden", reply["problem"])
 
     def test_action_that_cannot_work_on_the_element_is_reported(self):
         flow = self.flow_with_login()
         steps = ["s1", "s2", "s3", "s4", "s5"]
         reply, _ = self.ask(flow, steps, "#open-popup", "fill")
-        self.assertIn("không phải ô nhập", reply["problem"])
+        self.assertIn("not an input", reply["problem"])
         reply, _ = self.ask(flow, steps, "#note", "select")
-        self.assertIn("danh sách chọn", reply["problem"])
+        self.assertIn("not a dropdown", reply["problem"])
         reply, _ = self.ask(flow, steps, ".same", "click")
         self.assertEqual((reply["count"], reply["problem"]), (2, None), reply)
 
@@ -235,7 +235,7 @@ class InspectorTests(IntegrationBase):
         flow["steps"].append({"id": "s6", "do": "click", "target": self.target("#open-popup"), "wait_navigation": True})
         reply, _ = self.ask(flow, ["s1", "s2", "s3", "s4", "s5", "s6"], "#popup-input", "fill")
         self.assertEqual(reply["failed_step"], "s6")
-        self.assertIn("Chờ chuyển trang", reply["error"])
+        self.assertIn("Wait for the page to change", reply["error"])
 
     def test_excel_block_uses_the_first_usable_row(self):
         excel_path = self.dir / "demo.xlsx"
@@ -254,7 +254,7 @@ class InspectorTests(IntegrationBase):
         self.assertEqual((reply["count"], reply["problem"]), (1, None), reply)
         self.assertTrue(reply["url"].endswith("/demo/item/1/edit"), reply)
         # Filled, but Save was only tried.
-        self.assertEqual(SITE.items[1]["summary"], "Tên cũ 1")
+        self.assertEqual(SITE.items[1]["summary"], "Old name 1")
         self.assertEqual(SITE.saves, 0)
 
     def test_excel_block_without_a_file_asks_for_one(self):
@@ -282,17 +282,17 @@ class DemoFlowTests(IntegrationBase):
         finished = events[-1]
         self.assertEqual(finished["type"], "finished", events[-3:])
         self.assertEqual(finished["outcome"], "finished", finished)
-        self.assertEqual(self.statuses(events), {2: "OK", 3: "OK", 4: "Lỗi", 5: "Bỏ qua", 6: "OK"})
-        self.assertEqual(SITE.items[1]["summary"], "Tên mới 1")
-        self.assertEqual(SITE.items[3]["summary"], "Tên cũ 3")
-        self.assertEqual(SITE.items[4]["summary"], "Tên cũ 4")
+        self.assertEqual(self.statuses(events), {2: "OK", 3: "OK", 4: "Failed", 5: "Skipped", 6: "OK"})
+        self.assertEqual(SITE.items[1]["summary"], "New name 1")
+        self.assertEqual(SITE.items[3]["summary"], "Old name 3")
+        self.assertEqual(SITE.items[4]["summary"], "Old name 4")
         self.assertEqual(file_hash(excel_path), before)
         workbook = load_workbook(finished["result_file"])
         sheet = workbook["Sheet1"]
         self.assertEqual(sheet["D2"].value, "OK")
-        self.assertEqual(sheet["E2"].value, "Tên mới 1")
-        self.assertTrue(sheet["D4"].value.startswith("Lỗi"))
-        self.assertTrue(sheet["D5"].value.startswith("Bỏ qua"))
+        self.assertEqual(sheet["E2"].value, "New name 1")
+        self.assertTrue(sheet["D4"].value.startswith("Failed"))
+        self.assertTrue(sheet["D5"].value.startswith("Skipped"))
         workbook.close()
         text = json.dumps(events, ensure_ascii=False)
         self.assertNotIn(demo_site.DEMO_PASSWORD, text)
@@ -300,7 +300,7 @@ class DemoFlowTests(IntegrationBase):
     def test_failed_row_has_a_screenshot(self):
         flow, excel_path = self.demo_files()
         events, run_dir = self.run_job(flow, excel_path)
-        failed = next(event for event in events if event["type"] == "row_done" and event["status"] == "Lỗi")
+        failed = next(event for event in events if event["type"] == "row_done" and event["status"] == "Failed")
         self.assertTrue((run_dir / failed["screenshot"]).exists())
 
     def test_wrong_password_stops_before_any_row_without_retry(self):
@@ -326,11 +326,11 @@ class DemoFlowTests(IntegrationBase):
         self.run_job(flow, excel_path, run_id="first")
         saves = SITE.saves
         events, _ = self.run_job(flow, excel_path, mode="retry", previous="first", run_id="second")
-        self.assertEqual(self.statuses(events), {4: "Lỗi"})
+        self.assertEqual(self.statuses(events), {4: "Failed"})
         self.assertEqual(SITE.saves, saves)
         workbook = load_workbook(events[-1]["result_file"])
         self.assertEqual(workbook["Sheet1"]["D2"].value, "OK")
-        self.assertEqual(workbook["Sheet1"]["E2"].value, "Tên mới 1")
+        self.assertEqual(workbook["Sheet1"]["E2"].value, "New name 1")
         workbook.close()
 
     def test_session_expiring_mid_run_pauses_after_consecutive_failures(self):
@@ -347,7 +347,7 @@ class DemoFlowTests(IntegrationBase):
 
         events, _ = self.run_job(flow, excel_path, on_event=on_event)
         self.assertEqual(events[-1]["outcome"], "stopped")
-        self.assertEqual(self.statuses(events), {2: "OK", 3: "Lỗi", 4: "Lỗi"})
+        self.assertEqual(self.statuses(events), {2: "OK", 3: "Failed", 4: "Failed"})
 
     def test_stop_command_finishes_current_row_and_resume_does_the_rest(self):
         flow, excel_path = self.demo_files()
@@ -372,7 +372,7 @@ class DemoFlowTests(IntegrationBase):
         self.run_job(flow, excel_path, on_event=on_event, run_id="first")
         state = runner.load_journal(self.dir / "first" / "journal.jsonl")
         self.assertEqual(state.statuses[2], "OK")
-        self.assertEqual(state.statuses[3], "Chưa rõ")
+        self.assertEqual(state.statuses[3], "Unclear")
         events, _ = self.run_job(flow, excel_path, mode="resume", previous="first", run_id="second")
         self.assertNotIn(3, self.statuses(events))
         self.assertIn(6, self.statuses(events))
@@ -398,17 +398,17 @@ class ElementTests(IntegrationBase):
             {"id": "d", "do": "click", "target": self.target("#popup-close")},
             {"id": "e", "do": "fill", "target": self.target("#frame-input", frames=["#inner"]), "value": "trong khung"},
             {"id": "f", "do": "click", "target": self.target("#frame-button", frames=["#inner"])},
-            {"id": "g", "do": "verify", "target": self.target("#frame-result", frames=["#inner"]), "equals": "Đã bấm"},
+            {"id": "g", "do": "verify", "target": self.target("#frame-result", frames=["#inner"]), "equals": "Clicked"},
             {"id": "h", "do": "click", "target": self.target("#delayed")},
             {"id": "i", "do": "wait_for", "target": self.target("#late-text")},
             {"id": "j", "do": "goto", "url": f"{self.base}/demo/item/2/edit"},
-            {"id": "k", "do": "select", "target": self.target("#priority"), "value": "Cao"},
+            {"id": "k", "do": "select", "target": self.target("#priority"), "value": "High"},
             {"id": "l", "do": "check", "target": self.target("#done"), "checked": True},
             {"id": "m", "do": "click", "target": self.target("input[name='SUBMIT']"), "wait_navigation": True},
         ]
         events, _ = self.run_job(self.flow_with(steps))
         self.assertEqual(events[-1]["outcome"], "finished", events[-1])
-        self.assertEqual(SITE.items[2]["priority"], "Cao")
+        self.assertEqual(SITE.items[2]["priority"], "High")
         self.assertTrue(SITE.items[2]["done"])
 
     def test_duplicate_element_fails_instead_of_guessing(self):
@@ -418,7 +418,7 @@ class ElementTests(IntegrationBase):
         ]
         events, _ = self.run_job(self.flow_with(steps))
         self.assertEqual(events[-1]["outcome"], "failed")
-        self.assertIn("khớp 2 chỗ", events[-1]["message"])
+        self.assertIn("matches 2 places", events[-1]["message"])
 
     def test_fallback_is_used_when_primary_is_gone_and_logged(self):
         steps = [
@@ -427,7 +427,7 @@ class ElementTests(IntegrationBase):
         ]
         events, _ = self.run_job(self.flow_with(steps))
         self.assertEqual(events[-1]["outcome"], "finished", events[-1])
-        self.assertTrue(any("dự phòng" in event.get("text", "") for event in events))
+        self.assertTrue(any("fallback" in event.get("text", "") for event in events))
 
     def test_fallback_matching_many_is_not_used(self):
         steps = [
@@ -470,7 +470,7 @@ class RecorderTests(IntegrationBase):
             page.click("a.item-link >> nth=1")
             page.wait_for_url("**/demo/item/2/edit")
             page.fill("#summary", "Tên do người gõ")
-            page.select_option("#priority", label="Cao")
+            page.select_option("#priority", label="High")
             page.check("#done")
             page.click("input[name='SUBMIT']")
             page.wait_for_url("**/demo/item/2")
@@ -491,7 +491,7 @@ class RecorderTests(IntegrationBase):
         self.assertIn("select", kinds)
         self.assertIn("check", kinds)
         select = next(step for step in steps if step["do"] == "select")
-        self.assertEqual(select["value"], "Cao")
+        self.assertEqual(select["value"], "High")
         typed = next(step for step in steps if step.get("value") == "Tên do người gõ")
         self.assertEqual(typed["target"]["primary"], "#summary")
         self.assertTrue(typed["target"]["verified"])

@@ -1,6 +1,6 @@
 'use strict';
 
-const SETUP_LABELS = { PASS: ['✓ Đạt', 'ok'], FAIL: ['✗ Chưa đạt', 'bad'], NOT_RUN: ['Chưa thử', 'neutral'] };
+const SETUP_LABELS = { PASS: ['✓ Pass', 'ok'], FAIL: ['✗ Not passed', 'bad'], NOT_RUN: ['Not tried', 'neutral'] };
 
 async function renderSetup() {
   setTopbarTitle(null);
@@ -15,23 +15,23 @@ async function renderSetup() {
     const busy = Boolean(status.busy);
     fill(page,
       el('div.page-head', null,
-        el('h1', { text: 'Setup' }),
+        el('h1', { text: t('Setup') }),
         el('span.spacer'),
-        el('button.btn', { id: 'setup-test', text: 'Re-check', disabled: busy || !status.ready, onclick: runTests }),
-        el('button.btn.primary', { id: 'setup-install', text: 'Install missing', disabled: busy || !missing.length, onclick: () => confirmInstall(missing) })),
-      status.busy || status.message ? el('div.banner.' + (status.message.startsWith('Lỗi') ? 'bad' : 'ok'), { id: 'setup-message', text: status.message }) : null,
+        el('button.btn', { id: 'setup-test', text: t('Re-check'), disabled: busy || !status.ready, onclick: runTests }),
+        el('button.btn.primary', { id: 'setup-install', text: t('Install missing'), disabled: busy || !missing.length, onclick: () => confirmInstall(missing) })),
+      status.busy || status.message ? el('div.banner.' + (status.failed ? 'bad' : 'ok'), { id: 'setup-message', text: status.message }) : null,
       el('div.card', { style: 'overflow:auto' }, el('table.data', { id: 'setup-table' },
-        el('tr', null, el('th', { text: 'Hạng mục' }), el('th', { text: 'Kết quả' }), el('th', { text: 'Chi tiết' })),
+        el('tr', null, el('th', { text: t('Item') }), el('th', { text: t('Result') }), el('th', { text: t('Details') })),
         status.items.map(item => {
           const [label, kind] = SETUP_LABELS[item.status] || [item.status, 'neutral'];
           return el('tr', { 'data-item': item.id },
             el('td', { text: item.title, style: 'font-weight:600' }),
-            el('td', null, el('span.badge.' + kind, { text: label })),
+            el('td', null, el('span.badge.' + kind, { text: t(label) })),
             el('td.muted', { text: item.detail, style: 'overflow-wrap:anywhere' }));
         }))),
       status.ready
-        ? el('div', { style: 'margin-top:14px' }, el('a.btn.primary', { id: 'setup-done', href: '#/', text: 'Open app' }))
-        : el('p.muted', { style: 'margin-top:14px', text: 'Bấm "Install missing" để cài từ gói có sẵn. Không cần mạng và không cần quyền admin.' }));
+        ? el('div', { style: 'margin-top:14px' }, el('a.btn.primary', { id: 'setup-done', href: '#/', text: t('Open app') }))
+        : el('p.muted', { style: 'margin-top:14px', text: t('Click Install missing to install from the package. No internet or admin rights needed.') }));
     if (busy && !stopped) {
       clearTimeout(timer);
       timer = setTimeout(load, 700);
@@ -43,8 +43,8 @@ async function renderSetup() {
   };
 
   const confirmInstall = async missing => {
-    const list = missing.map(item => `${item.title}${item.size_mb ? ` (khoảng ${item.size_mb} MB)` : ''}`).join(', ');
-    if (!await confirmBox('Cài những gì còn thiếu', `Sẽ cài vào thư mục của app: ${list}. Không cần mạng, không sửa Python hay Chrome của máy.`, 'Install')) return;
+    const list = missing.map(item => `${item.title}${item.size_mb ? t(' (about {size} MB)', { size: item.size_mb }) : ''}`).join(', ');
+    if (!await confirmBox(t('Install what is missing'), t('This installs into the app folder: {list}. No internet needed, and it does not change the Python or Chrome on this machine.', { list }), t('Install'))) return;
     try {
       await api('POST', '/api/setup/install', {});
       load();
@@ -63,6 +63,6 @@ async function renderSetup() {
     clearTimeout(timer);
     window.leaveView = null;
   };
-  page.append(el('p.muted', { text: 'Đang kiểm tra...' }));
+  page.append(el('p.muted', { text: t('Checking...') }));
   await load();
 }

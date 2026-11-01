@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from . import flow as flow_module, paths, runner
+from .i18n import t
 from .workers import WorkerSession
 
 # Windows ends a closing console's processes after 5 seconds.
@@ -74,37 +75,37 @@ def new_run_id():
 def describe_event(event):
     """The log line for a worker event, as (level, text), or None if it is not worth one."""
     kind = event.get("type")
-    prefix = f"Hàng {event['row']}: " if event.get("row") else ""
+    prefix = t("Row {row}: ", row=event["row"]) if event.get("row") else ""
     if kind == "browser_open":
-        return "info", "Đã mở trình duyệt."
+        return "info", t("Opened the browser.")
     if kind == "step":
         return "info", prefix + event.get("label", "")
     if kind == "row_done":
         message = f": {event['message']}" if event.get("message") else ""
         level = "error" if event.get("status") == runner.STATUS_FAILED else "info"
-        return level, f"{prefix}{event.get('status')}{message}"
+        return level, f"{prefix}{t(event.get('status', ''))}{message}"
     if kind == "paused":
-        return "warn", f"Tạm dừng: {event.get('reason', '')}"
+        return "warn", t("Paused: {reason}", reason=event.get("reason", ""))
     if kind == "resumed":
-        return "info", "Chạy tiếp." if event.get("decision") == "continue" else "Đã dừng theo yêu cầu."
+        return "info", t("Continuing.") if event.get("decision") == "continue" else t("Stopped as requested.")
     if kind == "log":
         return event.get("level", "info"), event.get("text", "")
     if kind == "finished":
         message = f": {event['message']}" if event.get("message") else ""
-        return ("info" if event.get("outcome") in ("finished", "stopped") else "error"), f"Kết thúc ({event.get('outcome')}){message}"
+        return ("info" if event.get("outcome") in ("finished", "stopped") else "error"), t("Ended ({outcome}){message}", outcome=event.get("outcome"), message=message)
     return None
 
 
 def describe_result(event):
     if event.get("cancelled"):
-        return "info", "Kiểm tra: đã dừng theo yêu cầu."
+        return "info", t("Check: stopped as requested.")
     if event.get("error"):
-        return "error", f"Kiểm tra: {event['error']}"
+        return "error", t("Check: {detail}", detail=event["error"])
     if event.get("problem"):
-        return "error", f"Kiểm tra: {event['problem']}"
+        return "error", t("Check: {detail}", detail=event["problem"])
     if "count" in event:
-        return ("info" if event["count"] == 1 else "error"), f"Kiểm tra: khớp {event['count']} phần tử tại {event.get('url', '')}"
-    return "info", f"Quét trang: tìm thấy {len(event.get('elements') or [])} phần tử tại {event.get('url', '')}"
+        return ("info" if event["count"] == 1 else "error"), t("Check: matched {count} element(s) at {url}", count=event["count"], url=event.get("url", ""))
+    return "info", t("Page scan: found {count} element(s) at {url}", count=len(event.get("elements") or []), url=event.get("url", ""))
 
 
 class JobManager:
@@ -120,9 +121,9 @@ class JobManager:
 
     def browser_in_use(self):
         if self.active is not None and self.active.session and self.active.session.alive():
-            return "Quy trình đang chạy."
+            return t("A flow is running.")
         if self.recording is not None and self.recording.alive():
-            return "Đang ghi thao tác."
+            return t("Actions are being recorded.")
         return None
 
     # Running a flow
@@ -152,7 +153,7 @@ class JobManager:
             session.on_exit = lambda code: self._on_run_exit(run, code)
             self.runs[run.run_id] = run
             self.active = run
-            self.log.add("info", f"Bắt đầu chạy '{run.flow_name}' (chế độ {mode}).")
+            self.log.add("info", t("Started running '{name}' (mode {mode}).", name=run.flow_name, mode=mode))
             session.start()
             return run
 
@@ -171,7 +172,7 @@ class JobManager:
             tail = "\n".join(run.session.output_tail[-5:])
             event = {
                 "type": "finished", "outcome": "crashed",
-                "message": "Tiến trình chạy đã dừng đột ngột. Bấm Resume để làm nốt." + (f"\n{tail}" if tail else ""),
+                "message": t("The run stopped suddenly. Click Resume to finish it.") + (f"\n{tail}" if tail else ""),
             }
             run.save_meta({"outcome": "crashed"})
             self.log.add("error", event["message"])
@@ -181,7 +182,7 @@ class JobManager:
     def command(self, run_id, command):
         run = self.runs.get(run_id)
         if run is None or run.session is None or not run.session.alive():
-            raise RuntimeError("Lần chạy này đã kết thúc.")
+            raise RuntimeError(t("This run has ended."))
         run.session.send({"cmd": command})
 
     def run_summary(self, run_id):
@@ -232,15 +233,15 @@ class JobManager:
             session.on_event = lambda event: self._on_recording_event(log, event)
             session.on_exit = lambda code: log.close()
             self.recording = session
-            self.log.add("info", f"Bắt đầu ghi thao tác tại {url or 'trang trắng'}.")
+            self.log.add("info", t("Started recording at {url}.", url=url or t("a blank page")))
             session.start()
             return session
 
     def _on_recording_event(self, log, event):
         if event.get("type") == "recorder_warning":
-            self.log.add("warn", f"Ghi thao tác: {event.get('text', '')}")
+            self.log.add("warn", t("Recording: {detail}", detail=event.get("text", "")))
         elif event.get("type") == "finished":
-            self.log.add("info", f"Kết thúc ghi thao tác: {len(event.get('entries') or [])} bước.")
+            self.log.add("info", t("Recording ended: {count} block(s).", count=len(event.get("entries") or [])))
         log.add(event)
 
     def stop_recording(self):
@@ -267,10 +268,10 @@ class JobManager:
         """Send one check or scan to the inspector. Its progress and result arrive in inspection_log."""
         with self.lock:
             if self.inspection_log is not None and not self.inspection_log.closed:
-                raise RuntimeError("Đang kiểm tra trên trang thật.")
+                raise RuntimeError(t("A check on the live page is already running."))
             session = self._ensure_inspector()
             self.inspection_log = EventLog()
-            self.log.add("info", "Kiểm tra: chạy tới khối cần kiểm tra trên trang thật." if command.get("cmd") == "check" else "Quét trang đang mở.")
+            self.log.add("info", t("Check: running up to the block on the live page.") if command.get("cmd") == "check" else t("Scanning the open page."))
             session.send(command)
 
     def inspection_command(self, command):
@@ -299,8 +300,8 @@ class JobManager:
     def _finish_inspection(self, message):
         log = self.inspection_log
         if log is not None and not log.closed:
-            text = message or "Trình duyệt đã bị đóng. Hãy bấm lại."
-            self.log.add("error", f"Kiểm tra: {text}")
+            text = message or t("The browser was closed. Please click again.")
+            self.log.add("error", t("Check: {detail}", detail=text))
             log.add({"type": "result", "error": text})
             log.close()
 

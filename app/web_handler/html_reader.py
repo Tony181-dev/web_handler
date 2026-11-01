@@ -1,5 +1,6 @@
 """Turn HTML into a list of elements and ways to find them."""
 import re
+from .i18n import t
 
 MAX_HTML_BYTES = 20 * 1024 * 1024
 MAX_ELEMENTS = 3000
@@ -36,7 +37,7 @@ def _parse(html):
     from bs4 import BeautifulSoup
 
     if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
-        raise HtmlTooLarge("HTML lớn hơn 20 MB.")
+        raise HtmlTooLarge(t("The HTML is larger than 20 MB."))
     return BeautifulSoup(html, "html.parser")
 
 
@@ -174,16 +175,16 @@ def _label(tag, soup):
 def _warnings(tag, primary, match_count):
     notes = []
     if tag.get("id") and _is_suspicious_id(tag["id"]):
-        notes.append(f"ID '{tag['id']}' có vẻ tự sinh, có thể đổi sau mỗi lần tải trang.")
+        notes.append(t("ID '{id}' looks auto-generated and may change each time the page loads.", id=tag["id"]))
     if primary and " > " in primary:
-        notes.append("Chỉ nhận diện được theo vị trí trong trang, dễ hỏng khi trang đổi.")
+        notes.append(t("It can only be found by its position in the page, which breaks easily when the page changes."))
     if match_count is not None and match_count == 0:
-        notes.append("Không tìm thấy phần tử trong HTML bằng cách nhận diện này.")
+        notes.append(t("This way of finding it matches nothing in the HTML."))
     if match_count is not None and match_count > 1:
-        notes.append(f"Cách nhận diện này khớp {match_count} phần tử.")
+        notes.append(t("This way of finding it matches {count} elements.", count=match_count))
     style = (tag.get("style") or "").replace(" ", "").lower()
     if tag.has_attr("hidden") or "display:none" in style or "visibility:hidden" in style:
-        notes.append("Phần tử đang bị ẩn trong HTML này.")
+        notes.append(t("The element is hidden in this HTML."))
     return notes
 
 

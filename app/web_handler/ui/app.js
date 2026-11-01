@@ -16,15 +16,38 @@ async function route() {
     showError(error);
     document.getElementById('view').replaceChildren(el('div.page', null,
       el('div.banner.bad', { text: error.message }),
-      el('a.btn', { href: '#/', text: 'Back to home' })));
+      el('a.btn', { href: '#/', text: t('Back to home') })));
   }
 }
 
-document.getElementById('log-corner').append(logButton());
-document.getElementById('nav-setup').addEventListener('click', () => { location.hash = '#/setup'; });
-document.getElementById('nav-secrets').addEventListener('click', openSecrets);
-window.addEventListener('hashchange', route);
-window.addEventListener('beforeunload', () => {
-  if (window.currentEditor) window.currentEditor.save.flush();
-});
-route();
+function setUpLanguagePicker() {
+  const picker = document.getElementById('language');
+  picker.replaceChildren(...LANGUAGES.map(([value, text]) => el('option', { value, text, selected: value === currentLanguage })));
+  picker.addEventListener('change', async () => {
+    try {
+      if (window.currentEditor) await window.currentEditor.save.flush();
+      await api('PUT', '/api/language', { language: picker.value });
+      location.reload();
+    } catch (error) {
+      picker.value = currentLanguage;
+      showError(error);
+    }
+  });
+}
+
+async function start() {
+  await loadLanguage();
+  document.getElementById('nav-secrets').textContent = t('Secrets');
+  document.getElementById('nav-setup').textContent = t('Setup');
+  setUpLanguagePicker();
+  document.getElementById('log-corner').append(logButton());
+  document.getElementById('nav-setup').addEventListener('click', () => { location.hash = '#/setup'; });
+  document.getElementById('nav-secrets').addEventListener('click', openSecrets);
+  window.addEventListener('hashchange', route);
+  window.addEventListener('beforeunload', () => {
+    if (window.currentEditor) window.currentEditor.save.flush();
+  });
+  route();
+}
+
+start();

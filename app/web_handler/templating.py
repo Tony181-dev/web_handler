@@ -1,5 +1,6 @@
 """Replace {{...}} in step fields with row, variable and secret values."""
 import re
+from .i18n import t
 
 TOKEN = re.compile(r"\{\{\s*([^{}]*?)\s*\}\}")
 COLUMN = re.compile(r"^[A-Z]{1,3}$")
@@ -20,7 +21,7 @@ def parse_token(token):
     for kind in ("var", "secret"):
         if token.startswith(kind + ":") and token[len(kind) + 1:].strip():
             return kind, token[len(kind) + 1:].strip()
-    raise TemplateError(f"Không hiểu mẫu {{{{{token}}}}}.")
+    raise TemplateError(t("Cannot understand the template {{{token}}}.", token=token))
 
 
 def references(text):
@@ -43,23 +44,23 @@ class Context:
     def value_of(self, kind, name):
         if kind == "column":
             if self.row is None:
-                raise TemplateError(f"Cột {name} chỉ dùng được trong vùng lặp theo Excel.")
+                raise TemplateError(t("Column {name} only works inside a loop over Excel rows.", name=name))
             return self.columns.get(name, "")
         if kind == "row":
             if self.row is None:
-                raise TemplateError("{{row}} chỉ dùng được trong vùng lặp theo Excel.")
+                raise TemplateError(t("{{row}} only works inside a loop over Excel rows."))
             return str(self.row)
         if kind == "i":
             if self.index is None:
-                raise TemplateError("{{i}} chỉ dùng được trong vùng lặp.")
+                raise TemplateError(t("{{i}} only works inside a loop."))
             return str(self.index)
         if kind == "var":
             if name not in self.variables:
-                raise TemplateError(f"Biến {name} chưa có giá trị.")
+                raise TemplateError(t("Variable {name} has no value yet.", name=name))
             return self.variables[name]
         value = self.get_secret(name) if self.get_secret else None
         if value is None:
-            raise TemplateError(f"Bí mật {name} chưa được lưu.")
+            raise TemplateError(t("Secret {name} has not been saved.", name=name))
         self.secret_values.add(value)
         return value
 

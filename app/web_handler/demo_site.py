@@ -9,9 +9,13 @@ import secrets
 import threading
 from urllib.parse import parse_qs
 
+from . import i18n
+from .i18n import t
+
 DEMO_USER = "demo"
-DEMO_PASSWORD = "matkhau-demo"
+DEMO_PASSWORD = "demo-password"
 LOCKED_ITEM = 3
+PRIORITIES = ("Low", "Medium", "High")
 
 STYLE = """
 <style>
@@ -40,7 +44,7 @@ class DemoSite:
     def reset(self):
         with self.lock:
             self.items = {
-                number: {"summary": f"Tên cũ {number}", "priority": "Thấp", "done": False}
+                number: {"summary": t("Old name {number}", number=number), "priority": t("Low"), "done": False}
                 for number in range(1, 7)
             }
             self.login_attempts = 0
@@ -50,37 +54,37 @@ class DemoSite:
 
     def page(self, title, body, user=True):
         nav = (
-            "<a href='/demo/items'>Danh sách</a><a href='/demo/playground'>Sân chơi</a>"
-            "<a href='/demo/logout'>Đăng xuất</a>" if user else ""
+            f"<a href='/demo/items'>{t('List')}</a><a href='/demo/playground'>{t('Playground')}</a>"
+            f"<a href='/demo/logout'>{t('Log out')}</a>" if user else ""
         )
         return (
-            f"<!doctype html><html lang='vi'><head><meta charset='utf-8'><title>{escape(title)}</title>{STYLE}</head>"
-            f"<body><header>Trang demo của Web Handler {nav}</header><main>{body}</main></body></html>"
+            f"<!doctype html><html lang='{i18n.language()}'><head><meta charset='utf-8'><title>{escape(title)}</title>{STYLE}</head>"
+            f"<body><header>{t('Web Handler demo site')} {nav}</header><main>{body}</main></body></html>"
         )
 
     def login_page(self, error=""):
         message = f"<div class='error' id='login-error'>{escape(error)}</div>" if error else ""
         body = (
-            f"<h2>Đăng nhập</h2>{message}"
-            f"<div class='note'>Tài khoản demo: <b>{DEMO_USER}</b> / <b>{DEMO_PASSWORD}</b></div>"
+            f"<h2>{t('Log in')}</h2>{message}"
+            f"<div class='note'>{t('Demo account')}: <b>{DEMO_USER}</b> / <b>{DEMO_PASSWORD}</b></div>"
             "<form method='post' action='/demo/login'>"
-            "<label for='user'>Tài khoản</label><input type='text' id='user' name='user'>"
-            "<label for='password'>Mật khẩu</label><input type='password' id='password' name='password'>"
-            "<input type='submit' class='login_button' title='Login' value='Đăng nhập'>"
+            f"<label for='user'>{t('Username')}</label><input type='text' id='user' name='user'>"
+            f"<label for='password'>{t('Password')}</label><input type='password' id='password' name='password'>"
+            f"<input type='submit' class='login_button' title='Login' value='{t('Log in')}'>"
             "</form>"
         )
-        return self.page("Đăng nhập", body, user=False)
+        return self.page(t("Log in"), body, user=False)
 
     def items_page(self):
         rows = "".join(
             f"<tr><td>{number}</td><td><a href='/demo/item/{number}/edit' class='item-link'>{escape(item['summary'])}</a></td>"
-            f"<td class='priority'>{escape(item['priority'])}</td><td>{'Xong' if item['done'] else ''}</td></tr>"
+            f"<td class='priority'>{escape(item['priority'])}</td><td>{t('Done') if item['done'] else ''}</td></tr>"
             for number, item in self.items.items()
         )
         return self.page(
-            "Danh sách",
-            "<h2>Danh sách mục</h2>"
-            f"<table id='items'><tr><th>ID</th><th>Tên</th><th>Ưu tiên</th><th>Trạng thái</th></tr>{rows}</table>",
+            t("List"),
+            f"<h2>{t('Items')}</h2>"
+            f"<table id='items'><tr><th>ID</th><th>{t('Name')}</th><th>{t('Priority')}</th><th>{t('Status')}</th></tr>{rows}</table>",
         )
 
     def edit_page(self, number, error=""):
@@ -88,16 +92,16 @@ class DemoSite:
         message = f"<div class='error' id='save-error'>{escape(error)}</div>" if error else ""
         options = "".join(
             f"<option{' selected' if item['priority'] == name else ''}>{name}</option>"
-            for name in ("Thấp", "Vừa", "Cao")
+            for name in map(t, PRIORITIES)
         )
         checked = " checked" if item["done"] else ""
         return self.page(
-            f"Sửa mục {number}",
-            f"<h2>Sửa mục {number}</h2>{message}"
+            t("Edit item {number}", number=number),
+            f"<h2>{t('Edit item {number}', number=number)}</h2>{message}"
             f"<form method='post' action='/demo/item/{number}/edit'>"
-            f"<label for='summary'>Tên</label><input type='text' id='summary' name='summary' value='{escape(item['summary'], quote=True)}'>"
-            f"<label for='priority'>Ưu tiên</label><select id='priority' name='priority'>{options}</select>"
-            f"<label><input type='checkbox' id='done' name='done'{checked}> Đã xong</label>"
+            f"<label for='summary'>{t('Name')}</label><input type='text' id='summary' name='summary' value='{escape(item['summary'], quote=True)}'>"
+            f"<label for='priority'>{t('Priority')}</label><select id='priority' name='priority'>{options}</select>"
+            f"<label><input type='checkbox' id='done' name='done'{checked}> {t('Finished')}</label>"
             "<input type='submit' name='SUBMIT' value='Save'>"
             "</form>",
         )
@@ -105,31 +109,32 @@ class DemoSite:
     def view_page(self, number):
         item = self.items[number]
         return self.page(
-            f"Mục {number}",
-            f"<h2>Mục {number}</h2><p id='view-summary'>{escape(item['summary'])}</p>"
+            t("Item {number}", number=number),
+            f"<h2>{t('Item {number}', number=number)}</h2><p id='view-summary'>{escape(item['summary'])}</p>"
             f"<p id='view-priority'>{escape(item['priority'])}</p>"
-            f"<a href='/demo/item/{number}/edit' id='edit-link'>Sửa</a>",
+            f"<a href='/demo/item/{number}/edit' id='edit-link'>{t('Edit')}</a>",
         )
 
     def playground_page(self):
         return self.page(
-            "Sân chơi",
-            "<h2>Sân chơi thử phần tử</h2>"
-            "<label for='note'>Ghi chú</label><textarea id='note' name='note'></textarea>"
-            f"<label for='auto'>Ô có ID tự sinh</label><input type='text' id='ember{secrets.randbelow(90000) + 10000}' name='auto-field'>"
-            "<button id='open-popup' type='button' onclick=\"document.getElementById('popup').style.display='block'\">Mở popup</button> "
-            "<button class='same' type='button'>Trùng</button> <button class='same' type='button'>Trùng</button> "
-            "<button id='delayed' type='button' onclick=\"setTimeout(()=>{const p=document.createElement('p');p.id='late-text';p.textContent='Đã xuất hiện';document.querySelector('main').append(p)},600)\">Hiện chữ sau 0,6 giây</button>"
-            "<div id='popup'><label for='popup-input'>Trong popup</label><input type='text' id='popup-input'>"
-            "<button id='popup-close' type='button' onclick=\"this.parentElement.style.display='none'\">Đóng</button></div>"
-            "<h3>Trong iframe</h3><iframe id='inner' name='inner-frame' src='/demo/frame' style='width:100%;height:150px;border:1px solid #ccd'></iframe>",
+            t("Playground"),
+            f"<h2>{t('Playground for trying elements')}</h2>"
+            f"<label for='note'>{t('Note')}</label><textarea id='note' name='note'></textarea>"
+            f"<label for='auto'>{t('Field with an auto-generated ID')}</label><input type='text' id='ember{secrets.randbelow(90000) + 10000}' name='auto-field'>"
+            f"<button id='open-popup' type='button' onclick=\"document.getElementById('popup').style.display='block'\">{t('Open popup')}</button> "
+            f"<button class='same' type='button'>{t('Same')}</button> <button class='same' type='button'>{t('Same')}</button> "
+            "<button id='delayed' type='button' onclick=\"setTimeout(()=>{const p=document.createElement('p');p.id='late-text';p.textContent='"
+            f"{t('Appeared')}';document.querySelector('main').append(p)}},600)\">{t('Show text after 0.6 s')}</button>"
+            f"<div id='popup'><label for='popup-input'>{t('In the popup')}</label><input type='text' id='popup-input'>"
+            f"<button id='popup-close' type='button' onclick=\"this.parentElement.style.display='none'\">{t('Close')}</button></div>"
+            f"<h3>{t('In an iframe')}</h3><iframe id='inner' name='inner-frame' src='/demo/frame' style='width:100%;height:150px;border:1px solid #ccd'></iframe>",
         )
 
     def frame_page(self):
         return (
             f"<!doctype html><html><head><meta charset='utf-8'>{STYLE}</head><body style='background:#fff;padding:10px'>"
-            "<label for='frame-input'>Ô trong iframe</label><input type='text' id='frame-input'>"
-            "<button id='frame-button' type='button' onclick=\"document.getElementById('frame-result').textContent='Đã bấm'\">Bấm trong iframe</button>"
+            f"<label for='frame-input'>{t('Field in the iframe')}</label><input type='text' id='frame-input'>"
+            f"<button id='frame-button' type='button' onclick=\"document.getElementById('frame-result').textContent='{t('Clicked')}'\">{t('Click in the iframe')}</button>"
             "<p id='frame-result'></p></body></html>"
         )
 
@@ -151,7 +156,7 @@ class DemoSite:
                     token = secrets.token_hex(12)
                     self.sessions.add(token)
                     return self.redirect("/demo/items", {"Set-Cookie": f"demo_session={token}; Path=/demo; HttpOnly"})
-                return 200, {}, self.login_page("Sai tài khoản hoặc mật khẩu.")
+                return 200, {}, self.login_page(t("Wrong username or password."))
             return 200, {}, self.login_page()
         if path == "/demo/logout":
             self.sessions.discard(session)
@@ -178,7 +183,7 @@ class DemoSite:
             if len(parts) == 4 and parts[3] == "edit":
                 if method == "POST":
                     if number == LOCKED_ITEM:
-                        return 200, {}, self.edit_page(number, "Mục này đang bị khóa, không lưu được.")
+                        return 200, {}, self.edit_page(number, t("This item is locked and cannot be saved."))
                     with self.lock:
                         self.saves += 1
                         item = self.items[number]
@@ -187,7 +192,7 @@ class DemoSite:
                         item["done"] = "done" in form
                     return self.redirect(f"/demo/item/{number}")
                 return 200, {}, self.edit_page(number)
-        return 404, {}, self.page("Không tìm thấy", "<h2>404: không tìm thấy trang</h2>")
+        return 404, {}, self.page(t("Not found."), f"<h2>{t('404: page not found')}</h2>")
 
     def redirect(self, location, headers=None):
         return 303, {"Location": location, **(headers or {})}, ""
@@ -201,14 +206,14 @@ def make_demo_workbook(path):
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Sheet1"
-    sheet.append(["ID mục", "Ghi chú", "Tên mới", "Kết quả", "Tên đã lưu"])
+    sheet.append([t("Item ID"), t("Note"), t("New name"), t("Result"), t("Saved name")])
     for cell in sheet[1]:
         cell.font = Font(bold=True)
-    sheet.append([1, "Bình thường", "Tên mới 1"])
-    sheet.append([2, "Bình thường", "Tên mới 2"])
-    sheet.append([3, "Mục bị khóa: hàng này sẽ lỗi", "Tên mới 3"])
-    sheet.append([4, "Thiếu tên mới: hàng này bị bỏ qua", None])
-    sheet.append([5, "Bình thường", "Tên mới 5"])
+    sheet.append([1, t("Normal"), t("New name {number}", number=1)])
+    sheet.append([2, t("Normal"), t("New name {number}", number=2)])
+    sheet.append([3, t("Locked item: this row will fail"), t("New name {number}", number=3)])
+    sheet.append([4, t("No new name: this row will be skipped"), None])
+    sheet.append([5, t("Normal"), t("New name {number}", number=5)])
     for column, width in (("A", 10), ("B", 36), ("C", 18), ("D", 40), ("E", 18)):
         sheet.column_dimensions[column].width = width
     path.parent.mkdir(parents=True, exist_ok=True)

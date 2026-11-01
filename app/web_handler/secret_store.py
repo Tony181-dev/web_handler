@@ -2,6 +2,7 @@
 import json
 
 from . import paths
+from .i18n import t
 
 SERVICE_PREFIX = "WebHandler/"
 ACCOUNT = "web_handler"
@@ -32,7 +33,7 @@ def set_secret(name, value):
     import keyring
 
     if not valid_name(name):
-        raise ValueError("Tên bí mật chỉ gồm chữ, số, dấu gạch.")
+        raise ValueError(t("A secret name can only hold letters, digits, dashes and underscores."))
     keyring.set_password(SERVICE_PREFIX + name, ACCOUNT, value)
     _write_names(set(names()) | {name})
 

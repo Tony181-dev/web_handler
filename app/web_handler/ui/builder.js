@@ -21,12 +21,12 @@ class FlowEditor {
   }
 
   async persist() {
-    this.setSaveState('Đang lưu...');
+    this.setSaveState(t('Saving...'));
     try {
       await api('PUT', '/api/flows/' + this.id, this.flow);
-      this.setSaveState('Đã lưu');
+      this.setSaveState(t('Saved'));
     } catch (error) {
-      this.setSaveState('Chưa lưu');
+      this.setSaveState(t('Not saved'));
       showError(error);
     }
   }
@@ -55,14 +55,14 @@ class FlowEditor {
   // Changes
 
   changed() {
-    this.setSaveState('Chưa lưu');
+    this.setSaveState(t('Not saved'));
     this.save();
     this.render();
   }
 
   changedQuietly() {
     // Typing must not rebuild the form under the cursor; only the diagram is redrawn.
-    this.setSaveState('Chưa lưu');
+    this.setSaveState(t('Not saved'));
     this.save();
     renderCanvas(this);
     this.showRowCount();
@@ -121,8 +121,8 @@ class FlowEditor {
   }
 
   async clearAll() {
-    const message = `Xóa ${this.blockCount()} khối, vùng lặp và cấu hình Excel của quy trình này. Không hoàn tác được. File Excel và mục Secrets vẫn giữ nguyên.`;
-    if (!await confirmBox('Xóa toàn bộ quy trình?', message, 'Clear all', 'danger')) return;
+    const message = t('Deletes {count} block(s), the loop and the Excel setup of this flow. This cannot be undone. The Excel file and Secrets stay as they are.', { count: this.blockCount() });
+    if (!await confirmBox(t('Clear the whole flow?'), message, t('Clear all'), 'danger')) return;
     this.flow.steps = [];
     this.flow.excel = null;
     this.excelPath = '';
@@ -219,9 +219,9 @@ class FlowEditor {
     const parts = [];
     if (!loop || loop.source === 'excel') {
       const settings = this.flow.excel || {};
-      const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : 'Chưa chọn file Excel';
+      const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : t('No Excel file selected');
       parts.push(
-        el('button.btn', { id: 'pick-excel', text: 'Select Excel', onclick: () => this.pickExcel() }),
+        el('button.btn', { id: 'pick-excel', text: t('Select Excel'), onclick: () => this.pickExcel() }),
         el('span.file-name', { id: 'excel-name', text: name, title: this.excelPath }));
       if (this.sheets.length) {
         const sheetSelect = el('select', {
@@ -232,7 +232,7 @@ class FlowEditor {
           },
         }, this.sheets.map(sheet => el('option', { value: sheet.name, text: sheet.name, selected: sheet.name === settings.sheet })));
         const start = el('input', {
-          type: 'number', id: 'start-row', min: '1', value: settings.start_row || 2, 'aria-label': 'Từ hàng',
+          type: 'number', id: 'start-row', min: '1', value: settings.start_row || 2, 'aria-label': t('From row'),
           oninput: () => {
             this.ensureExcelSettings().start_row = Math.max(1, parseInt(start.value, 10) || 1);
             this.save();
@@ -240,7 +240,7 @@ class FlowEditor {
           },
         });
         const end = el('input', {
-          type: 'number', id: 'end-row', min: '1', value: settings.end_row || '', placeholder: 'hết', 'aria-label': 'Đến hàng',
+          type: 'number', id: 'end-row', min: '1', value: settings.end_row || '', placeholder: t('end'), 'aria-label': t('To row'),
           oninput: () => {
             this.ensureExcelSettings().end_row = parseInt(end.value, 10) || null;
             this.save();
@@ -248,26 +248,26 @@ class FlowEditor {
           },
         });
         this.rowCountNode = el('span.count-pill', { id: 'row-count' });
-        parts.push(sheetSelect, el('span', { text: 'Hàng' }), start, el('span', { text: 'đến' }), end, this.rowCountNode);
+        parts.push(sheetSelect, el('span', { text: t('Row') }), start, el('span', { text: t('to') }), end, this.rowCountNode);
       }
     } else {
       this.rowCountNode = null;
       const count = el('input', {
-        type: 'number', id: 'run-count', min: '1', value: loop.count || 1, 'aria-label': 'Số lần chạy',
+        type: 'number', id: 'run-count', min: '1', value: loop.count || 1, 'aria-label': t('Number of runs'),
         oninput: () => {
           loop.count = Math.max(1, parseInt(count.value, 10) || 1);
           this.save();
           renderCanvas(this);
         },
       });
-      parts.push(el('span', { text: 'Số lần chạy' }), count);
+      parts.push(el('span', { text: t('Number of runs') }), count);
     }
     this.saveStateNode = el('span.save-state', { text: this.saveStateNode ? this.saveStateNode.textContent : '' });
     parts.push(
       el('span.spacer'),
       this.saveStateNode,
-      el('button.btn', { id: 'run-trial', text: 'Run once', onclick: () => startRunFlow(this, 'trial') }),
-      el('button.btn.primary', { id: 'run-full', text: '▶ Run', onclick: () => startRunFlow(this, 'full') }));
+      el('button.btn', { id: 'run-trial', text: t('Run once'), onclick: () => startRunFlow(this, 'trial') }),
+      el('button.btn.primary', { id: 'run-full', text: t('▶ Run'), onclick: () => startRunFlow(this, 'full') }));
     bar.replaceChildren(...parts);
     this.showRowCount();
   }
@@ -282,7 +282,7 @@ class FlowEditor {
       return;
     }
     const start = settings.start_row || 2;
-    this.rowCountNode.textContent = `tối đa ${Math.max(0, settings.end_row - start + 1)} lần`;
+    this.rowCountNode.textContent = t('up to {count} run(s)', { count: Math.max(0, settings.end_row - start + 1) });
   }
 
   async pickExcel() {
@@ -297,7 +297,7 @@ class FlowEditor {
   }
 
   async askExcelPath() {
-    const path = await promptBox('Đường dẫn file Excel', 'Dán đường dẫn đầy đủ', this.excelPath, 'Hộp thoại chọn file bị đóng hoặc không mở được. Bạn có thể dán đường dẫn vào đây.');
+    const path = await promptBox(t('Excel file path'), t('Paste the full path'), this.excelPath, t('The file dialog was closed or could not open. You can paste the path here.'));
     if (path) await this.loadExcel(path.replace(/^"|"$/g, ''));
   }
 }
@@ -313,7 +313,7 @@ async function renderBuilder(id) {
   };
 
   const nameInput = el('input', {
-    type: 'text', id: 'flow-name', value: flow.name, 'aria-label': 'Tên quy trình',
+    type: 'text', id: 'flow-name', value: flow.name, 'aria-label': t('Flow name'),
     oninput: () => {
       flow.name = nameInput.value;
       editor.save();
@@ -325,12 +325,15 @@ async function renderBuilder(id) {
   editor.canvasNode.addEventListener('pointerdown', event => startLasso(event, editor));
   editor.inspectorNode = el('aside.inspector', { id: 'inspector' });
   editor.runbarNode = el('div.runbar', { id: 'runbar' });
-  editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: 'Clear all', title: 'Xóa toàn bộ khối, vùng lặp và cấu hình Excel', style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
+  editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: t('Clear all'), style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
 
-  const palette = el('nav.palette', { 'aria-label': 'Các loại khối' },
-    el('div.section-label', { text: 'Kéo thả khối' }),
+  attachHelp(editor.clearNode, t('Deletes every block, the loop and the Excel setup of this flow.'));
+
+  const palette = el('nav.palette', { 'aria-label': t('Block types') },
+    el('div.section-label', { text: t('Drag blocks') }),
     PALETTE.map(kind => {
       const tool = el('div.tool', { 'data-kind': kind, text: STEP_NAMES[kind], tabindex: '0', role: 'button' });
+      attachHelp(tool, t(STEP_HELP[kind]));
       tool.addEventListener('pointerdown', event => startPaletteDrag(event, editor, kind));
       tool.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -341,7 +344,7 @@ async function renderBuilder(id) {
       return tool;
     }),
     el('div', { style: 'height:10px' }),
-    el('button.btn.record', { id: 'start-record', text: '● Record', title: 'Ghi thao tác', style: 'width:100%', onclick: () => startRecording(editor) }),
+    attachHelp(el('button.btn.record', { id: 'start-record', text: t('● Record'), style: 'width:100%', onclick: () => startRecording(editor) }), t('Do the work once by hand in Chrome, and the tool turns it into blocks.')),
     editor.clearNode,
     logButton());
 
@@ -354,6 +357,7 @@ async function renderBuilder(id) {
     window.leaveView = null;
     window.onSecretsChanged = null;
     window.currentEditor = null;
+    hideHelp();
   };
 
   await editor.loadSecrets();

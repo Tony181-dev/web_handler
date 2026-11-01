@@ -1,38 +1,42 @@
 WEB HANDLER
 
-Tự động hóa thao tác trên web và Excel, không cần viết code.
+Automate work on websites and Excel, without writing code.
+Tiếng Việt: xem README.vi.txt.
 
-CÀI ĐẶT (không cần mạng, không cần quyền admin, chọn một trong ba cách)
-- Bộ cài: chạy WebHandler-Setup-<phiên bản>.exe, rồi mở Web Handler từ Desktop hoặc Start menu.
-  Máy có thể cảnh báo vì file chưa được ký số. Nếu công ty chặn file exe, dùng cách dưới.
-- Script: giải nén file zip, bấm đúp Install.bat.
-- Không cài: giải nén file zip vào nơi bạn có quyền ghi, bấm đúp Start.bat, rồi bấm "Install missing" trên màn hình Setup.
+LANGUAGE
+The app starts in English. Choose another language at the top right of the app, and it remembers your choice.
 
-Thử nhanh: bấm "Open sample flow" để chạy trên trang demo có sẵn.
+INSTALL (no internet or admin rights needed; pick one of three ways)
+- Installer: run WebHandler-Setup-<version>.exe, then open Web Handler from the Desktop or the Start menu.
+  Windows may warn you because the file is not digitally signed. If your company blocks exe files, use the next way.
+- Script: unpack the zip file and double-click Install.bat.
+- Without installing: unpack the zip file somewhere you can write, double-click Start.bat, then click "Install missing" on the Setup screen.
 
-TẮT APP
-Đóng cửa sổ đen của app. Quy trình đang chạy, trình duyệt của app và mọi tiến trình phụ đều tắt theo.
-Nếu đang chạy dở, hàng đang làm được đánh dấu "Chưa rõ". Chrome và Excel của riêng bạn không bị ảnh hưởng.
+Quick try: click "Open sample flow" to run on the built-in demo site.
 
-DỰNG QUY TRÌNH CỦA BẠN
-1. Bấm "New flow", chọn một mẫu có sẵn hoặc "Blank flow". Sau đó kéo khối từ cột bên trái, hoặc bấm "Record" để làm tay một lượt.
-2. Chọn khối, rồi dán HTML của phần tử: F12, chuột phải vào phần tử, Copy, Copy outerHTML.
-3. Kéo chuột khoanh các khối cần lặp, bỏ qua phần đăng nhập, rồi bấm "Create loop".
-4. Bấm "Select Excel", chọn dải hàng ở thanh dưới, bấm "Run once", rồi "Run".
-   Ví dụ cột A chứa link, cột B chứa nội dung: khối Open link chọn Excel cột A, khối Fill chọn Excel cột B.
-5. Muốn làm lại từ đầu, bấm "Clear all": xóa mọi khối, vùng lặp và cấu hình Excel của quy trình.
+CLOSING THE APP
+Close the app's black window. A running flow, the app's browser and all its helper processes close with it.
+If a run is in progress, the row being worked on is marked "Unclear". Your own Chrome and Excel are not affected.
 
-AN TOÀN DỮ LIỆU
-- File Excel gốc không bị sửa. Kết quả nằm ở file <tên>_result_<thời gian> cạnh file gốc.
-- Mật khẩu nằm trong Windows Credential Manager, không nằm trong file quy trình hay log.
-- "Run once" vẫn ghi thật lên trang web cho một hàng.
-- "Check on live page" chạy thật các khối phía trước, với hàng đầu tiên của Excel. Riêng khối đang kiểm tra không được thực hiện.
-- Nút "Log" hiện log của hệ thống. Log không chứa mật khẩu hay giá trị đã điền, và nằm trong thư mục data.
-- Thư mục data chứa quy trình, ảnh chụp lỗi và phiên đăng nhập. Đừng gửi thư mục đó cho người khác.
-- Tool không vượt captcha hay MFA. Dùng khối "Manual step" cho các bước đó.
-- Hãy chắc chắn quy định của hệ thống cho phép tự động hóa trước khi dùng.
+BUILDING YOUR OWN FLOW
+1. Click "New flow" and pick a template or "Blank flow". Then drag blocks from the left column, or click "Record" to do the work once by hand. Point at a block to see what it does.
+2. Select a block and paste the HTML of the element: F12, right-click the element, Copy, Copy outerHTML.
+3. Drag a box around the blocks to repeat, leaving out the login, then click "Create loop".
+4. Click "Select Excel", choose the rows in the bar below, click "Run once", then "Run".
+   For example, with links in column A and content in column B: choose Excel column A for the Open link block, and column B for the Fill block.
+5. To start over, click "Clear all": it deletes every block, the loop and the Excel setup of the flow.
 
-GỠ
-- Cài bằng bộ cài: gỡ Web Handler trong Settings, Apps. Bộ gỡ sẽ hỏi có xóa dữ liệu của bạn không.
-- Cài bằng script hoặc không cài: đóng app, rồi xóa thư mục và các shortcut.
-Các bí mật đã lưu nằm trong Windows Credential Manager, mục WebHandler/.
+KEEPING YOUR DATA SAFE
+- The original Excel file is never changed. Results go to a <name>_result_<time> file next to it.
+- Passwords stay in Windows Credential Manager, never in the flow file or the log.
+- "Run once" still writes for real on the website, for one row.
+- "Check on live page" really runs the blocks before it, with the first Excel row. Only the block being checked is not carried out.
+- The "Log" button shows the system log. The log holds no passwords or filled-in values, and lives in the data folder.
+- The data folder holds your flows, error screenshots and login sessions. Do not send that folder to anyone.
+- The tool does not get past captchas or MFA. Use a "Manual step" block for those.
+- Make sure the rules of the system you use allow automation before using this tool.
+
+UNINSTALL
+- Installed with the installer: remove Web Handler in Settings, Apps. It asks whether to delete your data.
+- Installed with the script or not installed: close the app, then delete the folder and the shortcuts.
+Saved secrets stay in Windows Credential Manager, under WebHandler/.

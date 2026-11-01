@@ -6,7 +6,7 @@ const LOG_POLL_MS = 1000;
 const logPanel = { node: null, list: null, lastId: 0, timer: null };
 
 function logButton() {
-  return el('button.btn.log-toggle', { text: 'Log', title: 'Xem log chạy của hệ thống', onclick: toggleLogPanel });
+  return el('button.btn.log-toggle', { text: t('Log'), title: t('See the system log'), onclick: toggleLogPanel });
 }
 
 function addLogLines(lines) {
@@ -41,14 +41,14 @@ function toggleLogPanel() {
   }
   logPanel.lastId = 0;
   logPanel.list = el('div.log', { id: 'log-lines' });
-  logPanel.empty = el('p.muted', { id: 'log-empty', text: 'Chưa có log.', style: 'padding:10px 12px' });
-  logPanel.node = el('section.log-panel', { id: 'log-panel', 'aria-label': 'Log hệ thống' },
+  logPanel.empty = el('p.muted', { id: 'log-empty', text: t('No log yet.'), style: 'padding:10px 12px' });
+  logPanel.node = el('section.log-panel', { id: 'log-panel', 'aria-label': t('System log') },
     el('div.log-panel-head', null,
-      el('h3', { text: 'Log hệ thống' }),
+      el('h3', { text: t('System log') }),
       el('span.spacer'),
       el('button.btn.small', {
         id: 'log-clear',
-        text: 'Clear',
+        text: t('Clear'),
         onclick: async () => {
           try {
             await api('DELETE', '/api/log');
@@ -57,7 +57,7 @@ function toggleLogPanel() {
           } catch (error) { showError(error); }
         },
       }),
-      el('button.btn.small', { id: 'log-close', text: 'Close', onclick: closeLogPanel })),
+      el('button.btn.small', { id: 'log-close', text: t('Close'), onclick: closeLogPanel })),
     logPanel.empty,
     logPanel.list);
   document.body.append(logPanel.node);

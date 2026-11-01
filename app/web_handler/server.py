@@ -8,7 +8,8 @@ from pathlib import Path
 import secrets
 from urllib.parse import parse_qs, urlsplit
 
-from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, paths
+from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, i18n, paths
+from .i18n import t
 from .demo_site import DEMO_PASSWORD, DEMO_USER, DemoSite, make_demo_flow, make_demo_workbook
 from .jobs import JobManager
 from .setup_manager import SetupManager
@@ -31,7 +32,7 @@ class App:
         self.key = key
         self.port = None
         self.log = SystemLog()
-        self.log.add("info", f"Web Handler {__version__} đã khởi động.")
+        self.log.add("info", t("Web Handler {version} started.", version=__version__))
         self.jobs = JobManager(self.log)
         self.setup = SetupManager(self.log)
         self.demo = DemoSite()
@@ -70,19 +71,19 @@ class App:
             except ValueError as error:
                 raise ApiError(str(error)) from error
         else:
-            flow = flow_module.new_flow(name or "Quy trình mới")
+            flow = flow_module.new_flow(name or t("New flow"))
         flow_module.save_flow(flow_module.flow_path(flow_id), flow)
         return {"id": flow_id, "flow": flow}
 
     def read_flow(self, flow_id):
         path = flow_module.flow_path(flow_id)
         if not path.is_file():
-            raise ApiError("Không tìm thấy quy trình.", 404)
+            raise ApiError(t("Flow not found."), 404)
         return flow_module.load_flow(path)
 
     def duplicate_flow(self, flow_id):
         flow = self.read_flow(flow_id)
-        flow["name"] = f"{flow.get('name', '')} (bản sao)"
+        flow["name"] = t("{name} (copy)", name=flow.get("name", ""))
         new_id = flow_module.new_flow_id()
         flow_module.save_flow(flow_module.flow_path(new_id), flow)
         return {"id": new_id}
@@ -122,13 +123,13 @@ class App:
         excel_error = None
         if loop and loop.get("source") == "excel":
             if not excel_path:
-                excel_error = "Chưa chọn file Excel."
+                excel_error = t("No Excel file selected.")
             elif settings.get("sheet"):
                 try:
                     info = excel.sheet_info(excel_path)
                     sheet = next((item for item in info["sheets"] if item["name"] == settings["sheet"]), None)
                     if sheet is None:
-                        excel_error = f"Không có sheet '{settings['sheet']}'."
+                        excel_error = t("There is no sheet '{name}'.", name=settings["sheet"])
                     else:
                         columns = {item["column"] for item in sheet["columns"]} | set(_letters_written(flow))
                         if settings.get("status_column"):
@@ -176,13 +177,13 @@ class App:
             total = len(chosen) - skipped
             urls = _expand_urls(flow, chosen[:50], urls, templating)
             if total == 0:
-                result["errors"].append({"step": None, "message": "Không có hàng nào để chạy trong dải đã chọn."})
+                result["errors"].append({"step": None, "message": t("There are no rows to run in the chosen range.")})
         if previous_state is not None:
             current_flow = flow_module.flow_hash(flow)
             if previous_state.meta.get("flow_hash") not in (None, current_flow):
-                result["changed"] = "Quy trình đã thay đổi so với lần chạy trước."
+                result["changed"] = t("The flow has changed since the previous run.")
             if excel_path and previous_state.meta.get("excel_hash") not in (None, excel.file_hash(excel_path)):
-                result["changed"] = "File Excel đã thay đổi so với lần chạy trước."
+                result["changed"] = t("The Excel file has changed since the previous run.")
         result["total"] = total
         result["skipped"] = skipped
         result["hosts"] = flow_module.hosts_of(flow, [url for url in urls if "{{" not in url])
@@ -204,11 +205,11 @@ class App:
     def file_for_run(self, run_id, name):
         summary = self.jobs.run_summary(run_id)
         if summary is None:
-            raise ApiError("Không tìm thấy lần chạy.", 404)
+            raise ApiError(t("Run not found."), 404)
         folder = (paths.runs_dir() / run_id).resolve()
         path = (folder / name).resolve()
         if path.parent != folder or path.suffix.lower() != ".png" or not path.is_file():
-            raise ApiError("Không tìm thấy file.", 404)
+            raise ApiError(t("File not found."), 404)
         return path
 
 
@@ -284,7 +285,7 @@ class Handler(BaseHTTPRequestHandler):
     def read_body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY_BYTES:
-            raise ApiError("Dữ liệu gửi lên quá lớn.", 413)
+            raise ApiError(t("The data sent is too large."), 413)
         return self.rfile.read(length) if length else b""
 
     def read_json(self):
@@ -298,13 +299,13 @@ class Handler(BaseHTTPRequestHandler):
         path = parts.path
         query = parse_qs(parts.query)
         if not self.host_is_allowed():
-            return self.send_json({"error": "Host không hợp lệ."}, 403)
+            return self.send_json({"error": t("Invalid host.")}, 403)
         if path == "/demo" or path.startswith("/demo/"):
             return self.serve_demo(method)
         if not self.origin_is_allowed():
-            return self.send_json({"error": "Nguồn không hợp lệ."}, 403)
+            return self.send_json({"error": t("Invalid origin.")}, 403)
         if not self.has_key(query):
-            return self.send_bytes(403, "Thiếu mã phiên. Hãy mở app bằng Start.bat.".encode("utf-8"), "text/plain; charset=utf-8")
+            return self.send_bytes(403, t("The session key is missing. Open the app with Start.bat.").encode("utf-8"), "text/plain; charset=utf-8")
         try:
             if path == "/":
                 return self.serve_index()
@@ -312,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_ui(path)
             if path.startswith("/api/"):
                 return self.serve_api(method, path, query)
-            raise ApiError("Không tìm thấy.", 404)
+            raise ApiError(t("Not found."), 404)
         except ApiError as error:
             self.app.log.add("error", str(error))
             self.send_json({"error": str(error)}, error.status)
@@ -349,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
     def serve_ui(self, path):
         target = (paths.UI_DIR / path[len("/ui/"):]).resolve()
         if paths.UI_DIR.resolve() not in target.parents or not target.is_file():
-            raise ApiError("Không tìm thấy.", 404)
+            raise ApiError(t("Not found."), 404)
         kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if kind.startswith("text/") or kind.endswith("javascript"):
             kind += "; charset=utf-8"
@@ -370,6 +371,9 @@ class Handler(BaseHTTPRequestHandler):
         if head == "dialog" and method == "POST":
             return self.send_json({"path": file_dialog.pick_excel_file()})
 
+        if head == "language":
+            return self.api_language(method)
+
         paths.activate_site()
         if head == "flows":
             return self.api_flows(method, rest)
@@ -389,7 +393,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_inspect(method, rest)
         if head == "record":
             return self.api_record(method, rest, query)
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
+
+    def api_language(self, method):
+        if method == "GET":
+            return self.send_json({"language": i18n.language()})
+        if method == "PUT":
+            try:
+                i18n.save(self.read_json().get("language"))
+            except ValueError as error:
+                raise ApiError(str(error)) from error
+            # The demo site holds its sample text in the language it was created in.
+            self.app.demo.reset()
+            return self.send_json({"language": i18n.language()})
+        raise ApiError(t("Not found."), 404)
 
     def api_log(self, method, query):
         if method == "GET":
@@ -398,7 +415,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "DELETE":
             self.app.log.clear()
             return self.send_json({"ok": True})
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_setup(self, method, rest):
         setup = self.app.setup
@@ -408,7 +425,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"started": setup.start_install()})
         if method == "POST" and rest == ["test"]:
             return self.send_json({"started": setup.start_self_tests()})
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_flows(self, method, rest):
         app = self.app
@@ -430,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
         elif len(rest) == 2 and rest[1] == "duplicate" and method == "POST":
             return self.send_json(app.duplicate_flow(rest[0]))
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_html(self):
         from . import html_reader
@@ -449,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and not rest:
             body = self.read_json()
             if not body.get("value"):
-                raise ApiError("Hãy nhập giá trị.")
+                raise ApiError(t("Please enter a value."))
             try:
                 secret_store.set_secret(body.get("name", ""), body["value"])
             except ValueError as error:
@@ -458,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "DELETE" and len(rest) == 1:
             secret_store.delete_secret(rest[0])
             return self.send_json({"ok": True})
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_runs(self, method, rest, query):
         app = self.app
@@ -473,21 +490,21 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(str(error), 409) from error
         run_id = rest[0] if rest else ""
         if not run_id.replace("_", "").isalnum():
-            raise ApiError("Mã lần chạy không hợp lệ.", 404)
+            raise ApiError(t("Invalid run ID."), 404)
         if len(rest) == 1 and method == "GET":
             summary = app.jobs.run_summary(run_id)
             if summary is None:
-                raise ApiError("Không tìm thấy lần chạy.", 404)
+                raise ApiError(t("Run not found."), 404)
             return self.send_json(summary)
         if len(rest) == 2 and rest[1] == "events" and method == "GET":
             run = app.jobs.runs.get(run_id)
             if run is None:
-                raise ApiError("Lần chạy này không còn trong bộ nhớ.", 404)
+                raise ApiError(t("This run is no longer in memory."), 404)
             return self.stream_events(run.log)
         if len(rest) == 2 and rest[1] == "command" and method == "POST":
             command = self.read_json().get("cmd")
             if command not in ("stop", "continue"):
-                raise ApiError("Lệnh không hợp lệ.")
+                raise ApiError(t("Invalid command."))
             try:
                 app.jobs.command(run_id, command)
             except RuntimeError as error:
@@ -497,13 +514,13 @@ class Handler(BaseHTTPRequestHandler):
             summary = app.jobs.run_summary(run_id)
             result = summary and summary.get("result_file")
             if not result or not Path(result).is_file():
-                raise ApiError("Không có file kết quả.", 404)
+                raise ApiError(t("There is no result file."), 404)
             os.startfile(result)
             return self.send_json({"ok": True})
         if len(rest) == 3 and rest[1] == "files" and method == "GET":
             path = app.file_for_run(run_id, rest[2])
             return self.send_bytes(200, path.read_bytes(), "image/png")
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_inspect(self, method, rest):
         jobs = self.app.jobs
@@ -518,15 +535,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         if method == "GET" and rest == ["events"]:
             if jobs.inspection_log is None:
-                raise ApiError("Chưa có lần kiểm tra nào.", 404)
+                raise ApiError(t("There has been no check yet."), 404)
             return self.stream_events(jobs.inspection_log)
         if method == "POST" and rest == ["command"]:
             command = self.read_json().get("cmd")
             if command not in ("continue", "cancel"):
-                raise ApiError("Lệnh không hợp lệ.")
+                raise ApiError(t("Invalid command."))
             jobs.inspection_command(command)
             return self.send_json({"ok": True})
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def api_record(self, method, rest, query):
         jobs = self.app.jobs
@@ -541,9 +558,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         if method == "GET" and rest == ["events"]:
             if jobs.recording_log is None:
-                raise ApiError("Chưa có bản ghi.", 404)
+                raise ApiError(t("There is no recording yet."), 404)
             return self.stream_events(jobs.recording_log)
-        raise ApiError("Không tìm thấy.", 404)
+        raise ApiError(t("Not found."), 404)
 
     def stream_events(self, log):
         last = self.headers.get("Last-Event-ID")

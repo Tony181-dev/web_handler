@@ -2,6 +2,8 @@
 import ctypes
 from ctypes import wintypes
 
+from .i18n import t
+
 OFN_FILEMUSTEXIST = 0x00001000
 OFN_PATHMUSTEXIST = 0x00000800
 OFN_NOCHANGEDIR = 0x00000008
@@ -43,10 +45,10 @@ def pick_excel_file():
     dialog = OPENFILENAMEW()
     dialog.lStructSize = ctypes.sizeof(OPENFILENAMEW)
     dialog.hwndOwner = ctypes.windll.user32.GetForegroundWindow()
-    dialog.lpstrFilter = "File Excel\0*.xlsx;*.xlsm\0Tất cả file\0*.*\0\0"
+    dialog.lpstrFilter = f"{t('Excel files')}\0*.xlsx;*.xlsm\0{t('All files')}\0*.*\0\0"
     dialog.lpstrFile = ctypes.cast(buffer, wintypes.LPWSTR)
     dialog.nMaxFile = BUFFER_CHARS
-    dialog.lpstrTitle = "Chọn file Excel"
+    dialog.lpstrTitle = t("Choose an Excel file")
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER
     if ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(dialog)):
         return buffer.value

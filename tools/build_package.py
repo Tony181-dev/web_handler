@@ -91,8 +91,7 @@ def find_inno_setup():
 
 def build_installer(package, compiler):
     script = STAGING_DIR / "installer.iss"
-    text = (ROOT / "tools" / "installer.iss").read_text(encoding="utf-8")
-    script.write_text(text, encoding="utf-8-sig")
+    shutil.copy2(ROOT / "tools" / "installer.iss", script)
     subprocess.run(
         [
             str(compiler), "/Q", f"/DAppVersion={version()}", f"/DSourceDir={package}",
@@ -130,6 +129,7 @@ def build(with_chromium, with_installer):
     copy_app(package)
     build_probe.write_crlf(ROOT / "Start.bat", package / "Start.bat")
     build_probe.write_crlf(ROOT / "README.txt", package / "README.txt")
+    build_probe.write_crlf(ROOT / "README.vi.txt", package / "README.vi.txt")
     build_probe.write_crlf(ROOT / "Install.bat", package / "Install.bat")
 
     print("Creating the zip file...")

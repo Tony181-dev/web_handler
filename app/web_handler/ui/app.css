@@ -113,7 +113,8 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .topbar-title { flex: 1; min-width: 0; color: var(--muted); }
 .topbar-title input { max-width: 380px; font-weight: 600; border-color: transparent; background: transparent; }
 .topbar-title input:hover, .topbar-title input:focus { border-color: var(--border-strong); background: var(--surface); }
-.topnav { display: flex; gap: 4px; }
+.topnav { display: flex; gap: 4px; align-items: center; }
+#language { width: auto; }
 
 /* Pages */
 .page { max-width: 920px; width: 100%; margin: 0 auto; padding: 28px 20px 48px; overflow: auto; }
@@ -124,6 +125,7 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 
 .demo-card { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 16px 18px; margin-bottom: 18px; background: var(--accent-soft); border: 1px solid transparent; border-radius: 10px; }
 .demo-card > div { flex: 1; min-width: 240px; }
+.tool-help { position: fixed; z-index: 60; max-width: 280px; padding: 8px 11px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); font-size: 13px; line-height: 1.45; pointer-events: none; }
 .template-list { display: grid; gap: 10px; }
 .template-item { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: center; }
 .flow-list { display: grid; gap: 8px; }
@@ -183,10 +185,9 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .tabs button { flex: 1; padding: 5px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; }
 .tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.badge.ok, .status-OK { background: var(--ok-soft); color: var(--ok); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
-.badge.bad, .status-Lỗi { background: var(--bad-soft); color: var(--bad); }
-.status-Bỏ.qua { background: var(--surface-2); color: var(--muted); }
+.badge.bad { background: var(--bad-soft); color: var(--bad); }
 .badge.neutral { background: var(--surface-2); color: var(--muted); }
 .badge.unknown { background: var(--unknown-soft); color: var(--unknown); }
 .note-list { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--warn); }

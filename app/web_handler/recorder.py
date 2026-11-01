@@ -2,6 +2,7 @@
 import time
 
 from . import html_reader
+from .i18n import t
 
 BINDING = "__webHandlerRecord"
 NAVIGATION_AFTER_ACTION_SECONDS = 3.0
@@ -192,18 +193,18 @@ class Recorder:
             return
         if recent_navigation:
             return  # A redirect, not something the person asked for.
-        self._add({"do": "goto", "url": url}, f"Open {url}")
+        self._add({"do": "goto", "url": url}, t("Open {target}", target=url))
 
     def record_event(self, event, frames):
         kind = event.get("kind")
         self.last_action = self.clock()
         if kind == "submit":
-            message = "Biểu mẫu được gửi bằng phím Enter mà không có nút. Hãy thêm khối Click nếu cần."
+            message = t("The form was sent with the Enter key, without a button. Add a Click block if needed.")
             self.warnings.append(message)
             self.emit({"type": "recorder_warning", "text": message})
             return
         if kind == "file":
-            message = "Không ghi được thao tác chọn file. Hãy làm phần này bằng khối Manual step."
+            message = t("Choosing a file cannot be recorded. Do this part with a Manual step block.")
             self.warnings.append(message)
             self.emit({"type": "recorder_warning", "text": message})
             return
@@ -215,18 +216,18 @@ class Recorder:
         self.last_click = None
         if kind == "click":
             step = {"do": "click", "target": target, "wait_navigation": False}
-            self.last_click = self._add(step, f"Click {label}", warnings)
+            self.last_click = self._add(step, t("Click {target}", target=label), warnings)
         elif kind == "fill":
             if event.get("password"):
                 step = {"do": "fill", "target": target, "value": "{{secret:password}}"}
-                self._add(step, f"Fill {label} (mật khẩu, không ghi lại)", warnings)
+                self._add(step, t("Fill {target} (password, not recorded)", target=label), warnings)
             else:
                 step = {"do": "fill", "target": target, "value": event.get("value", "")}
-                self._add(step, f"Fill {label}", warnings)
+                self._add(step, t("Fill {target}", target=label), warnings)
         elif kind == "select":
-            self._add({"do": "select", "target": target, "value": event.get("value", "")}, f"Select {label}", warnings)
+            self._add({"do": "select", "target": target, "value": event.get("value", "")}, t("Select {target}", target=label), warnings)
         elif kind == "check":
-            self._add({"do": "check", "target": target, "checked": bool(event.get("checked"))}, f"Check {label}", warnings)
+            self._add({"do": "check", "target": target, "checked": bool(event.get("checked"))}, t("Check {target}", target=label), warnings)
 
     def result(self):
         return {"entries": self.steps, "warnings": self.warnings}
