@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 sys.path.insert(0, str(ROOT / "runtime" / "site"))
 
-from web_handler import browser, excel, flow as flow_module, flow_templates, i18n, runner, secret_store, settings, templating, worker
+from web_handler import browser, excel, flow as flow_module, flow_templates, i18n, runner, secret_store, server, settings, templating, worker
 from web_handler.browser_errors import BrowserClosed, ElementError
 
 i18n.use("en")
@@ -709,6 +709,11 @@ class BrowserModeTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     settings.save_browser_mode("sideways")
                 self.assertEqual(settings.browser_mode(), "offscreen")
+
+
+class VersionOnDiskTests(unittest.TestCase):
+    def test_reads_the_version_of_the_files_on_disk(self):
+        self.assertEqual(server.version_on_disk(), server.__version__)
 
 
 class OcrValidationTests(unittest.TestCase):

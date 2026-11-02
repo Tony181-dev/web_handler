@@ -57,6 +57,14 @@ function openActiveJobBox() {
   });
 }
 
+async function checkForUpdate() {
+  const answer = await api('GET', '/api/ping').catch(() => null);
+  if (!answer || !answer.version_on_disk || answer.version_on_disk === answer.version) return;
+  const notice = document.getElementById('update-notice');
+  notice.textContent = t('The app was updated. Close its window and reopen it.');
+  notice.hidden = false;
+}
+
 function setUpLanguagePicker() {
   const picker = document.getElementById('language');
   picker.replaceChildren(...LANGUAGES.map(([value, text]) => el('option', { value, text, selected: value === currentLanguage })));
@@ -91,6 +99,7 @@ async function start() {
     }
   });
   await refreshActiveJob();
+  checkForUpdate();
   route();
 }
 

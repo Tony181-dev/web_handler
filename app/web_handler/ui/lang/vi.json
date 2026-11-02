@@ -559,9 +559,6 @@
   "Point this block at the picture, then use the variable in a Fill block. Hard pictures can be read wrongly: use a Manual step for those.": "Chỉ khối này vào ảnh, rồi dùng biến trong khối Điền. Ảnh khó có thể đọc sai: khi đó hãy dùng khối Làm tay.",
   "No text could be read from {element}.": "Không đọc được chữ từ {element}.",
   "OCR could not start: {error}": "Không khởi động được OCR: {error}",
-  "Browser: Visible": "Trình duyệt: Hiện",
-  "Browser: Offscreen": "Trình duyệt: Thu nhỏ",
-  "Browser: Headless": "Trình duyệt: Ẩn",
   "Run and Run once open the window and bring it to the front.": "Chạy và Chạy thử 1 lần sẽ mở cửa sổ và đưa lên trước.",
   "Run and Run once keep the window in the taskbar. Click it there to see it.": "Chạy và Chạy thử 1 lần giữ cửa sổ dưới taskbar. Bấm vào đó để xem.",
   "Run and Run once have no window at all. A Manual step block cannot be used.": "Chạy và Chạy thử 1 lần không mở cửa sổ nào. Không dùng được khối Làm tay.",
@@ -571,5 +568,6 @@
   "Saved secret": "Bí mật đã lưu",
   "Saved. Type here to change it.": "Đã lưu. Gõ vào đây để đổi.",
   "Type the password": "Nhập mật khẩu",
-  "Saved in Windows Credential Manager under Secrets, not in the flow file.": "Được lưu trong Trình quản lý thông tin xác thực của Windows, ở mục Bí mật, không nằm trong file quy trình."
+  "Saved in Windows Credential Manager under Secrets, not in the flow file.": "Được lưu trong Trình quản lý thông tin xác thực của Windows, ở mục Bí mật, không nằm trong file quy trình.",
+  "The app was updated. Close its window and reopen it.": "App đã được cập nhật. Hãy đóng cửa sổ của app rồi mở lại."
 }

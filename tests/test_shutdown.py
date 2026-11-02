@@ -103,6 +103,14 @@ class ShutdownTests(unittest.TestCase):
         self.wait_until_serving()
         return process
 
+    def start_app_without_waiting(self):
+        process = subprocess.Popen(
+            self.main_command(), env=self.env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        self.started.append(process)
+        return process
+
     def wait_until_serving(self):
         deadline = time.monotonic() + 30
         path = Path(self.data) / "server.json"
@@ -280,6 +288,55 @@ class ShutdownTests(unittest.TestCase):
         self.assert_all_gone(children)
         self.assertEqual(self.api("GET", f"/api/runs/{job['run_id']}")["outcome"], "stopped")
         self.assert_next_run_works()
+
+    def start_older_app(self):
+        """The same app, but reporting an older version, like a window left open across an update."""
+        code = (
+            "import runpy, sys\n"
+            f"sys.path.insert(0, {str(ROOT / 'app')!r})\n"
+            "import web_handler\n"
+            "web_handler.__version__ = '0.0.1'\n"
+            f"sys.argv = ['main.py', '--no-browser']\n"
+            f"runpy.run_path({str(ROOT / 'app' / 'main.py')!r}, run_name='__main__')\n"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", code], env=self.env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        self.started.append(process)
+        self.wait_until_serving()
+        self.assertEqual(self.api("GET", "/api/ping")["version"], "0.0.1")
+        return process
+
+    def test_starting_a_newer_version_replaces_an_older_app_still_running(self):
+        older = self.start_older_app()
+        newer = self.start_app_without_waiting()
+        deadline = time.monotonic() + 30
+        while older.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertIsNotNone(older.poll(), "The older app is still running")
+        self.assertIsNone(newer.poll(), "The new start gave up")
+        deadline = time.monotonic() + 30
+        version = None
+        while time.monotonic() < deadline:
+            try:
+                self.wait_until_serving()
+                version = self.api("GET", "/api/ping")["version"]
+                if version != "0.0.1":
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
+        from web_handler import __version__
+
+        self.assertEqual(version, __version__)
+        self.assertEqual(self.api("GET", "/api/browser-mode")["mode"], "visible")
+
+    def test_starting_the_same_version_still_reuses_the_running_app(self):
+        running = self.start_app()
+        second = self.start_app_without_waiting()
+        self.assertEqual(second.wait(30), 0)
+        self.assertIsNone(running.poll())
 
     def test_only_adopted_processes_die_with_the_app(self):
         """The person's own Chrome or Excel, opened from the app, must survive it closing."""

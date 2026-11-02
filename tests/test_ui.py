@@ -1295,6 +1295,27 @@ class BrowserModeButtonTests(AppTestCase):
         self.page.locator("#browser-mode").click()
         expect(self.page.locator("#browser-mode")).to_have_text("Browser: Visible")
 
+    def test_label_stays_in_english_in_the_vietnamese_interface(self):
+        self.new_flow()
+        self.page.select_option("#language", "vi")
+        expect(self.page.locator("html")).to_have_attribute("lang", "vi")
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Visible")
+        self.page.locator("#browser-mode").click()
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Offscreen")
+        self.page.select_option("#language", "en")
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+
+    def test_window_left_open_across_an_update_says_to_reopen(self):
+        expect(self.page.locator("#update-notice")).to_be_hidden()
+
+        def answer(route):
+            route.fulfill(json={"ok": True, "version": "0.0.1", "version_on_disk": "0.0.2"})
+
+        self.page.route("**/api/ping*", answer)
+        self.page.reload()
+        expect(self.page.locator("#update-notice")).to_be_visible()
+        expect(self.page.locator("#update-notice")).to_contain_text("reopen")
+
     def test_headless_refuses_a_manual_step_before_running(self):
         self.new_flow()
         self.page.locator(".tool[data-kind=goto]").click()

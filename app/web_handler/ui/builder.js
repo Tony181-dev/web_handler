@@ -5,6 +5,7 @@ const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
 const INSPECTOR_KEY_STEP = 16;
 const HISTORY_LIMIT = 200;
 const PASSWORD_SAVE_DELAY_MS = 300;
+// The labels stay in English in every language, as the names of these modes.
 const BROWSER_MODES = {
   visible: ['Browser: Visible', 'Run and Run once open the window and bring it to the front.'],
   offscreen: ['Browser: Offscreen', 'Run and Run once keep the window in the taskbar. Click it there to see it.'],
@@ -396,7 +397,7 @@ class FlowEditor {
     this.saveStateNode = el('span.save-state', { text: this.saveStateNode ? this.saveStateNode.textContent : '' });
     const [modeLabel, modeHelp] = BROWSER_MODES[this.browserMode];
     const modeButton = el('button.btn', {
-      id: 'browser-mode', text: t(modeLabel), title: t(modeHelp),
+      id: 'browser-mode', text: modeLabel, title: t(modeHelp),
       onclick: () => this.nextBrowserMode(),
     });
     this.undoNode = el('button.btn', { id: 'undo', text: t('↶ Undo'), title: t('Undo the last change (Ctrl+Z)'), onclick: () => this.moveInHistory(-1) });

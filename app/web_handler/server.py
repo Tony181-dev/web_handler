@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import secrets
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -371,7 +372,7 @@ class Handler(BaseHTTPRequestHandler):
         rest = segments[1:]
 
         if head == "ping" and method == "GET":
-            return self.send_json({"ok": True, "version": __version__})
+            return self.send_json({"ok": True, "version": __version__, "version_on_disk": version_on_disk()})
         if head == "log":
             return self.api_log(method, query)
         if head == "setup":
@@ -616,6 +617,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
 
+def version_on_disk():
+    """The files can be newer than this process, when the app was updated with its window left open."""
+    try:
+        text = (Path(__file__).parent / "__init__.py").read_text(encoding="utf-8")
+    except OSError:
+        return __version__
+    match = re.search(r'__version__ = "([^"]+)"', text)
+    return match.group(1) if match else __version__
+
+
 def load_saved_address():
     try:
         return json.loads((paths.data_dir() / SERVER_FILE).read_text(encoding="utf-8"))
@@ -645,8 +656,11 @@ def running_instance():
     for _ in range(PING_ATTEMPTS):
         try:
             with opener.open(f"{url}api/ping?key={saved['key']}", timeout=2) as response:
-                if json.loads(response.read().decode("utf-8")).get("ok"):
+                answer = json.loads(response.read().decode("utf-8"))
+                # An older version is not reused: its pages would call what it does not have yet.
+                if answer.get("ok") and answer.get("version") == __version__:
                     return f"{url}?key={saved['key']}"
+                return None
         except Exception:
             pass
     return None

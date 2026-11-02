@@ -77,7 +77,7 @@ def main():
         if not no_browser:
             webbrowser.open(existing)
         return 0
-    # Still recorded but not answering: it is hung and may be holding the browser profile.
+    # Still recorded but not reusable: it is hung or an older version, and may be holding the browser profile.
     server.stop_saved_instance()
 
     paths.activate_site()

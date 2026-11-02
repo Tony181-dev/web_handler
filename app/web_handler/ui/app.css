@@ -184,7 +184,8 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .selection-bar { pointer-events: auto; display: inline-flex; gap: 8px; align-items: center; max-width: 100%; overflow: hidden; white-space: nowrap; padding: 6px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow); user-select: none; }
 
 #active-job { color: var(--loop-text); font-weight: 700; }
-#active-job[hidden] { display: none; }
+#active-job[hidden], #update-notice[hidden] { display: none; }
+#update-notice { margin: 0 8px 0 0; padding: 4px 10px; }
 .delay-field { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .delay-field summary { cursor: pointer; font-weight: 600; }
 .delay-field .field { margin-top: 8px; }
