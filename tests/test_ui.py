@@ -1564,6 +1564,25 @@ class VariableChipTests(AppTestCase):
         expect(self.page.locator("html")).to_have_attribute("lang", "en")
 
 
+class RecordedPasswordTests(AppTestCase):
+    def test_recorded_password_is_left_empty_and_marked_in_the_diagram(self):
+        self.new_flow()
+        self.page.evaluate("""() => showRecordReview(window.currentEditor, [
+            { step: { do: 'goto', url: 'https://example.test/login' }, label: 'Open https://example.test/login', warnings: [] },
+            { step: { do: 'fill', target: { primary: '#password', fallbacks: [], frames: [] }, value: '' }, label: 'Fill Password (password, not recorded)', warnings: [], password: true },
+        ], [])""")
+        review = self.page.locator("#record-review")
+        expect(review).to_contain_text("Left empty")
+        expect(review.locator("[data-secret-name]")).to_have_count(0)
+        self.shot("record_review_password")
+        self.page.click("[data-action=accept-record]")
+        password_block = self.page.locator("#canvas .node").nth(1)
+        expect(password_block).to_have_class(re.compile("invalid"))
+        steps = self.saved_flow()["steps"]
+        self.assertEqual(steps[1]["value"], "")
+        self.assertNotIn("secret", json.dumps(steps))
+
+
 class BrandTests(AppTestCase):
     def test_author_is_shown_under_the_name(self):
         name = self.page.locator(".brand-name")

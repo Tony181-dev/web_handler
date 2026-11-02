@@ -535,6 +535,97 @@ class ElementTests(IntegrationBase):
 
 
 class RecorderTests(IntegrationBase):
+    def record(self, actions):
+        """Record what `actions(page, recorder, context)` does in a fresh browser. Returns the entries."""
+        from playwright.sync_api import sync_playwright
+
+        from web_handler import recorder as recorder_module
+
+        recorder = recorder_module.Recorder(lambda event: None)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(channel="chrome", headless=True)
+            context = browser.new_context()
+            recorder.attach(context)
+            page = context.new_page()
+            actions(page, recorder, context)
+            page.wait_for_timeout(400)
+            browser.close()
+        return recorder.result()["entries"]
+
+    def log_in(self, page):
+        page.goto(f"{self.base}/demo/login")
+        page.fill("#user", demo_site.DEMO_USER)
+        page.fill("#password", demo_site.DEMO_PASSWORD)
+        page.click("input.login_button")
+        page.wait_for_url("**/demo/items")
+
+    def test_logging_in_with_the_enter_key_records_the_button(self):
+        def actions(page, recorder, context):
+            page.goto(f"{self.base}/demo/login")
+            page.fill("#user", demo_site.DEMO_USER)
+            page.fill("#password", demo_site.DEMO_PASSWORD)
+            page.press("#password", "Enter")
+            page.wait_for_url("**/demo/items")
+
+        entries = self.record(actions)
+        steps = [entry["step"] for entry in entries]
+        self.assertEqual([step["do"] for step in steps], ["goto", "fill", "fill", "click"], steps)
+        self.assertTrue(steps[3]["wait_navigation"])
+        self.assertIn("login", steps[3]["target"]["primary"].lower())
+
+    def test_editing_a_field_again_keeps_one_block_with_the_last_value(self):
+        def actions(page, recorder, context):
+            self.log_in(page)
+            page.goto(f"{self.base}/demo/item/2/edit")
+            page.fill("#summary", "First try")
+            page.click("h2")
+            page.fill("#summary", "Second try")
+            page.click("h2")
+
+        steps = [entry["step"] for entry in self.record(actions)]
+        fills = [step for step in steps if step["do"] == "fill" and step["target"]["primary"] == "#summary"]
+        self.assertEqual([step["value"] for step in fills], ["Second try"])
+        # Clicking a heading is not a click to repeat.
+        self.assertEqual([step for step in steps if step["do"] == "click" and "h2" in step["target"]["primary"]], [])
+
+    def test_typing_and_stopping_at_once_keeps_the_last_field(self):
+        def actions(page, recorder, context):
+            self.log_in(page)
+            page.goto(f"{self.base}/demo/item/2/edit")
+            page.click("#priority")
+            page.locator("#summary").press_sequentially("Not left yet")
+            typed.append(page.input_value("#summary"))
+            recorder.flush_pending(context)
+
+        typed = []
+        steps = [entry["step"] for entry in self.record(actions)]
+        fills = [step for step in steps if step["do"] == "fill" and step["target"]["primary"] == "#summary"]
+        self.assertIn("Not left yet", typed[0])
+        self.assertEqual([step["value"] for step in fills], typed)
+
+    def test_a_field_only_clicked_into_records_nothing_when_stopping(self):
+        def actions(page, recorder, context):
+            self.log_in(page)
+            page.goto(f"{self.base}/demo/item/2/edit")
+            page.click("#summary")
+            recorder.flush_pending(context)
+
+        steps = [entry["step"] for entry in self.record(actions)]
+        self.assertEqual([step for step in steps if step["do"] == "fill" and step["target"]["primary"] == "#summary"], [])
+
+    def test_a_link_opening_a_new_tab_is_a_plain_click(self):
+        def actions(page, recorder, context):
+            self.log_in(page)
+            page.goto(f"{self.base}/demo/playground")
+            with context.expect_page() as popup:
+                page.click("#new-tab")
+            popup.value.wait_for_load_state()
+
+        steps = [entry["step"] for entry in self.record(actions)]
+        click = next(step for step in steps if step["do"] == "click" and step["target"]["primary"] == "#new-tab")
+        self.assertFalse(click["wait_navigation"])
+        self.assertEqual(steps[-1], click, "The new tab's page must not become an Open link block")
+
     def test_recording_flow_creates_steps_without_password(self):
         from playwright.sync_api import sync_playwright
 
@@ -572,7 +663,8 @@ class RecorderTests(IntegrationBase):
         self.assertEqual(kinds[:4], ["goto", "fill", "fill", "click"], kinds)
         self.assertEqual(steps[0]["url"], f"{self.base}/demo/login")
         self.assertEqual(steps[1]["target"]["primary"], "#user")
-        self.assertEqual(steps[2]["value"], "{{secret:password}}")
+        self.assertEqual(steps[2]["value"], "")
+        self.assertTrue(result["entries"][2]["password"])
         self.assertTrue(steps[3]["wait_navigation"])
         self.assertIn("select", kinds)
         self.assertIn("check", kinds)
@@ -613,10 +705,12 @@ class RecorderTests(IntegrationBase):
             page.wait_for_url("**/demo/item/5")
             page.wait_for_timeout(200)
             browser.close()
-        steps = [entry["step"] for entry in recorder.result()["entries"]]
-        for step in steps:
-            if step.get("value") == "{{secret:password}}":
-                step["value"] = "{{secret:demo_password}}"
+        entries = recorder.result()["entries"]
+        steps = [entry["step"] for entry in entries]
+        # What a person does after recording: choose the password the recording left empty.
+        for entry in entries:
+            if entry.get("password"):
+                entry["step"]["value"] = "{{secret:demo_password}}"
         SITE.reset()
         SITE.sessions.clear()
         events, _ = self.run_job({"name": "r", "settings": {"step_timeout_seconds": 5}, "steps": steps})

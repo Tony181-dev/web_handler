@@ -128,6 +128,7 @@ class DemoSite:
             t("Playground"),
             f"<h2>{t('Playground for trying elements')}</h2>"
             f"<p><img id='captcha' alt='' src='data:image/svg+xml;base64,{CAPTCHA_PICTURE}'></p>"
+            f"<p><a id='new-tab' href='/demo/items' target='_blank'>{t('Open the list in a new tab')}</a></p>"
             f"<label for='note'>{t('Note')}</label><textarea id='note' name='note'></textarea>"
             f"<label for='auto'>{t('Field with an auto-generated ID')}</label><input type='text' id='ember{secrets.randbelow(90000) + 10000}' name='auto-field'>"
             f"<button id='open-popup' type='button' onclick=\"document.getElementById('popup').style.display='block'\">{t('Open popup')}</button> "

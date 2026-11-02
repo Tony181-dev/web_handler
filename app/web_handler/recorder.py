@@ -73,6 +73,23 @@ RECORDER_SCRIPT = r"""
     });
   };
 
+  // Typing is reported when the field is left. Until then it waits here, so stopping can still report it.
+  const TYPING = new Set(['text', 'password', 'email', 'number', 'search', 'tel', 'url', 'date',
+    'datetime-local', 'month', 'time', 'week', '']);
+  const typed = new Set();
+  const isTyping = el => el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && TYPING.has((el.type || '').toLowerCase()));
+  const reportFill = el => {
+    typed.delete(el);
+    send('fill', el, isPassword(el) ? {} : { value: el.value });
+  };
+  document.addEventListener('input', event => {
+    if (event.target && event.target.nodeType === 1 && isTyping(event.target)) typed.add(event.target);
+  }, true);
+  window.__webHandlerFlush = () => {
+    const el = document.activeElement;
+    if (el && typed.has(el)) reportFill(el);
+  };
+
   const CLICKABLE = 'button, a, input, select, textarea, option, label, summary, [role], [onclick]';
   const NOT_CLICKS = new Set(['text', 'password', 'email', 'number', 'search', 'tel', 'url', 'date',
     'datetime-local', 'month', 'time', 'week', 'checkbox', 'radio', 'file', 'range', 'color', '']);
@@ -80,7 +97,9 @@ RECORDER_SCRIPT = r"""
   document.addEventListener('click', event => {
     const origin = event.target;
     if (!origin || origin.nodeType !== 1) return;
-    const el = origin.closest(CLICKABLE) || origin;
+    // Plain text, headings and empty space are not clicks a run should repeat. Elements that look clickable count.
+    const el = origin.closest(CLICKABLE) || (getComputedStyle(origin).cursor === 'pointer' ? origin : null);
+    if (!el) return;
     const tag = el.tagName;
     if (tag === 'HTML' || tag === 'BODY') return;
     if (['TEXTAREA', 'SELECT', 'OPTION'].includes(tag)) return;
@@ -100,7 +119,7 @@ RECORDER_SCRIPT = r"""
       send('check', el, { checked: el.checked });
     } else if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
       if ((el.type || '').toLowerCase() === 'file') { send('file', el, {}); return; }
-      send('fill', el, isPassword(el) ? {} : { value: el.value });
+      reportFill(el);
     }
   }, true);
 
@@ -150,9 +169,11 @@ class Recorder:
         self.last_action = None
         self.last_click = None
         self.last_navigation = None
+        self.last_action_page = None
         self.counter = 0
 
     def attach(self, context):
+        self.context = context
         context.expose_binding(BINDING, self._on_binding)
         context.add_init_script(RECORDER_SCRIPT)
         context.on("page", self.attach_page)
@@ -163,11 +184,21 @@ class Recorder:
         page.on("framenavigated", lambda frame: self._on_navigation(page, frame))
 
     def _on_binding(self, source, event):
-        self.record_event(event, _make_frames(source["frame"]))
+        self.record_event(event, _make_frames(source["frame"]), source.get("page"))
 
     def _on_navigation(self, page, frame):
         if frame.parent_frame is None:
-            self.record_navigation(frame.url)
+            self.record_navigation(frame.url, page)
+
+    def flush_pending(self, context=None):
+        """Report a field still being typed in, as stopping does not leave it."""
+        for page in (context or self.context).pages:
+            for frame in page.frames:
+                try:
+                    frame.evaluate("window.__webHandlerFlush && window.__webHandlerFlush()")
+                except Exception:
+                    # A frame that is closing or not ready has nothing to report.
+                    pass
 
     def _add(self, step, label, warnings=()):
         self.counter += 1
@@ -177,13 +208,17 @@ class Recorder:
         self.emit({"type": "recorded", "entry": entry})
         return entry
 
-    def record_navigation(self, url):
+    def record_navigation(self, url, page=None):
         now = self.clock()
         if url.startswith(("about:", "chrome:", "data:")):
             return
         recent_action = self.last_action is not None and now - self.last_action < NAVIGATION_AFTER_ACTION_SECONDS
         recent_navigation = self.last_navigation is not None and now - self.last_navigation < REDIRECT_SECONDS
         self.last_navigation = now
+        if recent_action and page is not None and self.last_action_page is not None and page is not self.last_action_page:
+            # A click that opened another tab: a run follows the new tab by itself, and the old page did not change.
+            self.last_action = None
+            return
         if recent_action:
             # One action explains one navigation; a later one is the person's own.
             self.last_action = None
@@ -195,9 +230,10 @@ class Recorder:
             return  # A redirect, not something the person asked for.
         self._add({"do": "goto", "url": url}, t("Open {target}", target=url))
 
-    def record_event(self, event, frames):
+    def record_event(self, event, frames, page=None):
         kind = event.get("kind")
         self.last_action = self.clock()
+        self.last_action_page = page
         if kind == "submit":
             message = t("The form was sent with the Enter key, without a button. Add a Click block if needed.")
             self.warnings.append(message)
@@ -218,9 +254,18 @@ class Recorder:
             step = {"do": "click", "target": target, "wait_navigation": False}
             self.last_click = self._add(step, t("Click {target}", target=label), warnings)
         elif kind == "fill":
+            previous = self.steps[-1] if self.steps else None
+            if previous and previous["step"]["do"] == "fill" and previous["step"]["target"]["primary"] == target["primary"] \
+                    and previous["step"]["target"]["frames"] == target["frames"]:
+                # The same field again: only its last value matters.
+                if not event.get("password"):
+                    previous["step"]["value"] = event.get("value", "")
+                self.emit({"type": "recorded_update", "entry": previous})
+                return
             if event.get("password"):
-                step = {"do": "fill", "target": target, "value": "{{secret:password}}"}
-                self._add(step, t("Fill {target} (password, not recorded)", target=label), warnings)
+                # Left empty for the person to choose in the block: a made-up secret name failed to run.
+                step = {"do": "fill", "target": target, "value": ""}
+                self._add(step, t("Fill {target} (password, not recorded)", target=label), warnings)["password"] = True
             else:
                 step = {"do": "fill", "target": target, "value": event.get("value", "")}
                 self._add(step, t("Fill {target}", target=label), warnings)

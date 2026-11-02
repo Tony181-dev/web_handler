@@ -58,6 +58,7 @@ async function startRecording(editor) {
     } else if (event.type === 'recorded_update') {
       const index = entries.findIndex(entry => entry.step.id === event.entry.step.id);
       if (index >= 0) entries[index] = event.entry;
+      draw();
     } else if (event.type === 'recorder_warning') {
       warnings.push(event.text);
       warningBox.append(el('li', { text: event.text }));
@@ -101,16 +102,10 @@ function showRecordReview(editor, entries, warnings) {
     const { step, label } = row.entry;
     const field = step.do === 'goto' ? 'url' : 'value';
     const hasValue = step[field] !== undefined;
-    const isSecret = hasValue && String(step[field]).startsWith('{{secret:');
+    const isSecret = Boolean(row.entry.password);
     let control = el('span.muted', { text: t('No data needed') });
-    if (hasValue && isSecret) {
-      const nameInput = el('input', {
-        type: 'text', class: 'mono', value: 'your_password', 'data-secret-name': step.id,
-        'aria-label': t('Secret name'),
-        oninput: () => { step[field] = `{{secret:${nameInput.value.trim()}}}`; },
-      });
-      step[field] = '{{secret:your_password}}';
-      control = el('div', null, nameInput, el('div.hint', { text: t('The secret name. Save its value under Secrets.') }));
+    if (isSecret) {
+      control = el('div.hint', { text: t('Left empty. After adding it, choose the password in the block: it is marked with a red !.') });
     } else if (hasValue) {
       const text = el('input', {
         type: 'text', class: 'mono', value: step[field], 'data-recorded': step.id, 'aria-label': t('Value when running'),

@@ -383,6 +383,9 @@ def run_recording(job, commands):
         while driver.is_open():
             command = commands.next(driver, 0.15)
             if command and command.get("cmd") == "stop":
+                recorder.flush_pending()
+                # The page reports through the browser, which needs a moment to deliver it.
+                driver.idle(400)
                 break
     except BrowserClosed:
         pass

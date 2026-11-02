@@ -399,7 +399,6 @@
   "The package has no offline/wheels folder.": "Gói cài thiếu thư mục offline/wheels.",
   "The page returned HTTP {status}.": "Trang trả về HTTP {status}.",
   "The run stopped suddenly. Click Resume to finish it.": "Lượt chạy dừng đột ngột. Bấm Chạy tiếp để làm nốt.",
-  "The secret name. Save its value under Secrets.": "Tên bí mật. Lưu giá trị ở mục Bí mật.",
   "The session key is missing. Open the app with Start.bat.": "Thiếu mã phiên. Hãy mở app bằng Start.bat.",
   "The sheet has no column {name}.": "Sheet không có cột {name}.",
   "The tool opens a separate Chrome window. You do the work once by hand and it records the steps. Password fields are never recorded.": "Tool mở một cửa sổ Chrome riêng. Bạn làm tay một lượt, tool ghi lại các bước. Ô mật khẩu không bao giờ được ghi.",
@@ -570,5 +569,7 @@
   "Type the password": "Nhập mật khẩu",
   "Saved in Windows Credential Manager under Secrets, not in the flow file.": "Được lưu trong Trình quản lý thông tin xác thực của Windows, ở mục Bí mật, không nằm trong file quy trình.",
   "The app was updated. Close its window and reopen it.": "App đã được cập nhật. Hãy đóng cửa sổ của app rồi mở lại.",
-  "no name yet": "chưa đặt tên"
+  "no name yet": "chưa đặt tên",
+  "Left empty. After adding it, choose the password in the block: it is marked with a red !.": "Để trống. Sau khi thêm vào, hãy chọn mật khẩu trong khối: khối này có dấu ! đỏ.",
+  "Open the list in a new tab": "Mở danh sách trong tab mới"
 }
