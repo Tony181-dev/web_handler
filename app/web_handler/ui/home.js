@@ -115,6 +115,7 @@ function openSecrets() {
             try {
               await api('DELETE', '/api/secrets/' + encodeURIComponent(name));
               reload();
+              if (window.onSecretsChanged) window.onSecretsChanged();
             } catch (error) { showError(error); }
           },
         }))))) : el('p.muted', { text: t('No secrets yet.') }));
