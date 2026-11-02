@@ -1081,6 +1081,241 @@ class FinderTests(AppTestCase):
         expect(self.page.locator("#target-selector")).to_have_value(chosen)
 
 
+class SelectionBarTests(AppTestCase):
+    def kinds(self):
+        return self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+
+    def add(self, *kinds):
+        for kind in kinds:
+            self.page.locator(f".tool[data-kind={kind}]").click()
+
+    def node(self, index):
+        return self.page.locator("#canvas .node").nth(index)
+
+    def test_bar_shows_for_one_block_and_nothing_moves(self):
+        self.new_flow()
+        self.add("goto", "click")
+        self.page.locator("#canvas").click(position={"x": 700, "y": 600})
+        expect(self.page.locator(".selection-bar")).to_have_count(0)
+        before = self.node(0).bounding_box()["y"]
+        self.node(0).click()
+        expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 1")
+        expect(self.page.locator("#duplicate-selection")).to_be_visible()
+        expect(self.page.locator("#make-loop")).to_be_enabled()
+        self.shot("selection_bar")
+        self.assertEqual(self.node(0).bounding_box()["y"], before)
+
+    def test_one_block_can_become_a_loop_from_the_bar(self):
+        self.new_flow()
+        self.add("goto", "click")
+        self.node(1).click()
+        self.page.click("#make-loop")
+        self.assertEqual(self.kinds(), ["goto", "loop"])
+
+    def test_a_flow_with_a_loop_keeps_the_bar_quiet_for_one_block(self):
+        self.new_flow()
+        self.add("loop", "goto")
+        self.node(0).click()
+        expect(self.page.locator("#make-loop")).to_be_disabled()
+        expect(self.page.locator("#loop-problem")).to_have_count(0)
+
+    def test_duplicate_adds_the_copy_right_after_and_selects_it(self):
+        self.new_flow()
+        self.add("goto", "click", "wait")
+        self.page.fill("#wait-seconds", "7")
+        self.node(1).click()
+        self.page.fill("#target-selector", "#save")
+        self.page.click("#duplicate-selection")
+        self.assertEqual(self.kinds(), ["goto", "click", "click", "wait"])
+        flow = self.saved_flow()
+        copy = flow["steps"][2]
+        self.assertEqual(copy["target"]["primary"], "#save")
+        self.assertEqual(len({step["id"] for step in flow["steps"]}), 4)
+        expect(self.node(2)).to_have_class(re.compile("selected"))
+        # A copy is its own block.
+        self.page.fill("#target-selector", "#other")
+        self.assertEqual([step["target"]["primary"] for step in self.saved_flow()["steps"][1:3]], ["#save", "#other"])
+
+    def test_duplicate_keeps_the_order_of_several_blocks_and_stays_in_the_loop(self):
+        self.new_flow()
+        self.add("loop", "goto", "click", "wait")
+        loop_id = self.page.evaluate("window.currentEditor.flow.steps[0].id")
+        ids = self.page.evaluate("window.currentEditor.flow.steps.slice(1).map(step => step.id)")
+        self.page.evaluate("ids => window.currentEditor.selectMany(ids)", ids[:2])
+        self.page.click("#duplicate-selection")
+        self.assertEqual(self.kinds(), ["loop", "goto", "click", "goto", "click", "wait"])
+        self.page.evaluate("""([loop, id]) => { const e = window.currentEditor; const step = e.flow.steps.find(item => item.id === id);
+            e.flow.steps = e.flow.steps.filter(item => item !== step); e.flow.steps[0].steps.push(step); e.select(id); e.changed(); }""", [loop_id, ids[2]])
+        self.page.click("#duplicate-selection")
+        self.assertEqual(self.page.evaluate("window.currentEditor.flow.steps[0].steps.map(step => step.do)"), ["wait", "wait"])
+        expect(self.page.locator("[data-lane=loop] .node").nth(1)).to_have_class(re.compile("selected"))
+
+    def test_selected_loop_shows_no_bar(self):
+        self.new_flow()
+        self.add("loop")
+        expect(self.page.locator(".loop-frame.selected")).to_have_count(1)
+        expect(self.page.locator(".selection-bar")).to_have_count(0)
+
+
+class UndoRedoTests(AppTestCase):
+    def kinds(self):
+        return self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+
+    def add(self, *kinds):
+        for kind in kinds:
+            self.page.locator(f".tool[data-kind={kind}]").click()
+
+    def test_buttons_sit_left_of_run_once_and_start_disabled(self):
+        self.new_flow()
+        undo, redo = self.page.locator("#undo"), self.page.locator("#redo")
+        expect(undo).to_be_disabled()
+        expect(redo).to_be_disabled()
+        trial = self.page.locator("#run-trial").bounding_box()
+        self.assertLess(redo.bounding_box()["x"], trial["x"])
+        self.assertLess(undo.bounding_box()["x"], redo.bounding_box()["x"])
+        self.assert_buttons_are_english()
+
+    def test_undo_and_redo_walk_through_the_changes_and_are_saved(self):
+        self.new_flow()
+        self.add("goto", "click")
+        self.page.click("#undo")
+        self.assertEqual(self.kinds(), ["goto"])
+        expect(self.page.locator("#canvas .node")).to_have_count(1)
+        self.assertEqual([step["do"] for step in self.saved_flow()["steps"]], ["goto"])
+        self.page.click("#undo")
+        self.assertEqual(self.kinds(), [])
+        expect(self.page.locator("#undo")).to_be_disabled()
+        self.page.click("#redo")
+        self.page.click("#redo")
+        self.assertEqual(self.kinds(), ["goto", "click"])
+        expect(self.page.locator("#redo")).to_be_disabled()
+        self.page.wait_for_timeout(700)
+        self.assertEqual([step["do"] for step in self.saved_flow()["steps"]], ["goto", "click"])
+
+    def test_a_new_change_after_undo_clears_redo(self):
+        self.new_flow()
+        self.add("goto", "click")
+        self.page.click("#undo")
+        expect(self.page.locator("#redo")).to_be_enabled()
+        self.add("wait")
+        expect(self.page.locator("#redo")).to_be_disabled()
+        self.assertEqual(self.kinds(), ["goto", "wait"])
+
+    def test_typing_is_undone_in_one_step_even_right_after_typing(self):
+        self.new_flow()
+        self.add("goto")
+        field = self.page.locator("[data-field=url]")
+        field.press_sequentially("https://a.test", delay=20)
+        expect(self.page.locator("#undo")).to_be_enabled()
+        self.page.click("#undo")
+        self.assertEqual(self.page.evaluate("window.currentEditor.flow.steps[0].url"), "")
+        self.assertEqual(self.kinds(), ["goto"])
+
+    def test_undo_brings_back_a_deleted_block_and_a_cleared_flow_with_its_excel(self):
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        expect(self.page.locator("#canvas .node")).to_have_count(10)
+        self.page.locator("#canvas .node").first.click()
+        self.page.click("#delete-step")
+        expect(self.page.locator("#canvas .node")).to_have_count(9)
+        self.page.click("#undo")
+        expect(self.page.locator("#canvas .node")).to_have_count(10)
+        self.page.click("#clear-all")
+        self.page.click("[data-action=confirm]")
+        expect(self.page.locator("#canvas .node")).to_have_count(0)
+        expect(self.page.locator("#excel-name")).to_have_text("No Excel file selected")
+        self.page.click("#undo")
+        expect(self.page.locator("#canvas .node")).to_have_count(10)
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        expect(self.page.locator("#excel-sheet")).to_be_visible()
+
+    def test_flow_name_is_undone_too(self):
+        self.new_flow("First")
+        self.page.locator("#flow-name").fill("Second")
+        self.page.wait_for_timeout(700)
+        self.page.click("#undo")
+        expect(self.page.locator("#flow-name")).to_have_value("First")
+
+    def test_keyboard_shortcuts_work_outside_text_boxes_only(self):
+        self.new_flow()
+        self.add("goto", "click")
+        self.page.locator("#canvas").click(position={"x": 700, "y": 600})
+        self.page.keyboard.press("Control+z")
+        self.assertEqual(self.kinds(), ["goto"])
+        self.page.keyboard.press("Control+y")
+        self.assertEqual(self.kinds(), ["goto", "click"])
+        self.page.keyboard.press("Control+z")
+        self.page.keyboard.press("Control+Shift+z")
+        self.assertEqual(self.kinds(), ["goto", "click"])
+        self.page.locator("#flow-name").focus()
+        self.page.keyboard.press("Control+z")
+        self.assertEqual(self.kinds(), ["goto", "click"])
+
+    def test_opening_a_flow_with_excel_starts_with_nothing_to_undo(self):
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-sheet")).to_be_visible()
+        self.page.wait_for_timeout(700)
+        expect(self.page.locator("#undo")).to_be_disabled()
+
+
+class BrandTests(AppTestCase):
+    def test_author_is_shown_under_the_name(self):
+        name = self.page.locator(".brand-name")
+        author = self.page.locator("#brand-author")
+        expect(author).to_have_text("author: Hoang Nguyen")
+        self.assertGreaterEqual(author.bounding_box()["y"], name.bounding_box()["y"] + name.bounding_box()["height"] - 1)
+        self.assertAlmostEqual(author.bounding_box()["x"], name.bounding_box()["x"], delta=1)
+
+
+class BlockDelayTests(AppTestCase):
+    def test_every_action_block_has_a_collapsed_empty_delay_at_the_end(self):
+        self.new_flow()
+        for kind in ("goto", "login", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+            details = self.page.locator("#delay-details")
+            expect(details).to_be_visible()
+            self.assertIsNone(details.get_attribute("open"), kind)
+            self.assertTrue(details.evaluate("el => el === el.parentElement.lastElementChild"), kind)
+            expect(self.page.locator("#delay-after")).to_be_hidden()
+            self.assertNotIn("delay_after", self.saved_flow()["steps"][-1])
+
+    def test_wait_and_loop_have_no_delay(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=wait]").click()
+        expect(self.page.locator("#wait-seconds")).to_be_visible()
+        expect(self.page.locator("#delay-details")).to_have_count(0)
+        self.page.locator(".tool[data-kind=loop]").click()
+        expect(self.page.locator("#loop-source")).to_be_visible()
+        expect(self.page.locator("#delay-details")).to_have_count(0)
+
+    def test_delay_is_saved_stays_open_when_set_and_can_be_cleared(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("#delay-details summary").click()
+        expect(self.page.locator("#delay-details")).to_contain_text("next block")
+        self.shot("delay_field")
+        self.page.fill("#delay-after", "1.5")
+        self.assertEqual(self.saved_flow()["steps"][0]["delay_after"], 1.5)
+        self.page.reload()
+        self.page.locator("#canvas .node").first.click()
+        expect(self.page.locator("#delay-after")).to_be_visible()
+        expect(self.page.locator("#delay-after")).to_have_value("1.5")
+        self.page.fill("#delay-after", "")
+        self.assertNotIn("delay_after", self.saved_flow()["steps"][0])
+
+    def test_run_counts_down_the_delay_on_its_block(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.page.locator("#delay-details summary").click()
+        self.page.fill("#delay-after", "3")
+        self.saved_flow()
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-flow .node[data-step=s1]")).to_contain_text("left", timeout=60000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=30000)
+
+
 class ToolHelpTests(AppTestCase):
     def test_hovering_a_block_explains_it_and_leaving_removes_it(self):
         self.new_flow()
