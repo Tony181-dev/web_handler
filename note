@@ -1,6 +1,6 @@
 # Web Handler: ghi chú dự án
 
-Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.9**.
+Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.10**.
 
 Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
 
@@ -8,7 +8,7 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 
 | Hạng mục | Tình trạng |
 |---|---|
-| App, bộ cài exe và file zip 0.1.9 | Xong |
+| App, bộ cài exe và file zip 0.1.10 | Xong |
 | Test tự động của app | 254/254 đạt (`test_i18n` 19, `test_core` 86, `test_html_reader` 18, `test_shutdown` 9, `test_integration` 29, `test_ui` 93) |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
@@ -19,8 +19,8 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 ## Cách chạy
 
 - Bản đang dùng: bấm đúp `web_handler/dist/WebHandler/Start.bat`. Giữ cửa sổ đó mở, đóng nó là tắt app.
-- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.9.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
-- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.9.zip`, bấm đúp `Install.bat`.
+- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.10.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
+- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.10.zip`, bấm đúp `Install.bat`.
 - Không cài: giải nén zip vào nơi có quyền ghi, không dùng thư mục Temp, chạy `Start.bat`, bấm `Install missing`, rồi `Open app`.
 - Dữ liệu nằm trong thư mục `data` của từng nơi cài. Muốn dùng quy trình cũ ở bản cài mới thì đóng app rồi chép thư mục `data` sang.
 - Thử nhanh: bấm `Open sample flow`, rồi `▶ Run`.
@@ -60,7 +60,7 @@ python tools/build_package.py
 ### Dựng quy trình
 - `+ New flow` mở hộp chọn: `Blank flow` hoặc 3 mẫu `Login + Excel rows`, `Read into Excel`, `Repeat clicks`. Bấm là tạo ngay. Ô tên có thể để trống. Khối phụ thuộc trang để trống và ghi rõ công dụng, ví dụ `Ô tài khoản`. Mẫu `Login + Excel rows` dùng khối `Login` với `Account` để trống và bí mật tên `your_password`, người dùng tự lưu trong `Secrets`.
 - 11 loại khối kéo thả, cộng khối `Loop`: `Open link`, `Login`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
-- `Login`: bắt buộc điền `Account` và `Password`. `Account` chỉ gõ trực tiếp, lấy từ Excel hoặc Biến, không được là bí mật vì nó hiện trên trang. `Password` chỉ chọn được từ `Secrets`, để mật khẩu không nằm trong file quy trình. Khối tự tìm ô tài khoản, ô mật khẩu và nút gửi, và báo lỗi nếu sau khi gửi form vẫn còn. Trang không có form thì coi như đã đăng nhập sẵn và ghi cảnh báo vào log. Chưa hỗ trợ form trong iframe và kiểu đăng nhập hai bước (nhập tài khoản rồi sang trang khác mới nhập mật khẩu), các trường hợp đó dùng khối `Fill` và `Click`.
+- `Login`: bắt buộc điền `Account` và `Password`. `Account` chỉ gõ trực tiếp, lấy từ Excel hoặc Biến, không được là bí mật vì nó hiện trên trang. `Password` gõ tay (mặc định ẩn) hoặc chọn từ `Secrets`. Mật khẩu gõ tay tự lưu vào Credential Manager với tên `password_<mã quy trình>_<mã khối>`, không nằm trong file quy trình và không vào lịch sử `Undo`. Khối tự tìm ô tài khoản, ô mật khẩu và nút gửi, và báo lỗi nếu sau khi gửi form vẫn còn. Trang không có form thì coi như đã đăng nhập sẵn và ghi cảnh báo vào log. Chưa hỗ trợ form trong iframe và kiểu đăng nhập hai bước (nhập tài khoản rồi sang trang khác mới nhập mật khẩu), các trường hợp đó dùng khối `Fill` và `Click`.
 - `Wait`: tạm ngưng theo số giây, mặc định 3, nhận số lẻ. Lúc chạy, khối và dòng trạng thái đếm ngược. Bấm `Stop after this row` trong lúc chờ thì vẫn chờ hết và làm xong hàng đó. `Stop` trong `Check on live page` thì dừng ngay.
 - Rê chuột hoặc chuyển focus vào một khối, `Record` hay `Clear all` ở cột trái thì hiện popup giải thích. Bấm hoặc rời chuột là popup tắt.
 - Mọi khối hành động, trừ `Wait` và `Loop`, có mục `Delay` thu gọn ở cuối panel, mặc định trống. Điền số giây thì khối chờ sau khi làm xong rồi mới sang khối tiếp theo, có đếm ngược. Khối lỗi thì không chờ. Mục này tự mở khi đã có giá trị.
@@ -68,6 +68,7 @@ python tools/build_package.py
 - `Undo`, `Redo` bên trái `Run once`, hoặc `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` khi không gõ trong ô nhập. Lịch sử tối đa 200 bước, chỉ giữ trong lúc quy trình đang mở, mất khi rời quy trình hoặc tải lại trang.
 - `Read OCR`: đọc chữ trong ảnh trên trang bằng `ddddocr`, chạy trên máy. Ảnh chụp của phần tử chỉ nằm trong bộ nhớ, không tạo file nên không cần dọn. Kết quả lưu vào biến hoặc cột Excel, có tùy chọn chữ hoa, chữ thường. Thử trên ảnh captcha giả lập: `ddddocr` 117/120, RapidOCR 59/120, OCR của Windows 6/32. Chưa thử trên captcha thật. Chỉ hợp với chữ ngắn.
 - Nút chuyển chế độ trình duyệt ở thanh dưới: `Visible`, `Offscreen` (thu nhỏ dưới taskbar), `Headless`. Lưu trong `data/settings.json`. Chỉ áp dụng cho `Run` và `Run once`. `Manual step` tự bật cửa sổ lên ở `Offscreen`, và bị từ chối trước khi chạy ở `Headless`.
+- Ô giá trị của `Fill` và ô `Account` có nút hình mắt ẩn/hiện, mặc định hiện. Nút chỉ che trên màn hình, giá trị của `Fill` vẫn nằm dạng chữ trong file quy trình.
 - Sắp xếp lại bằng cách kéo khối, xóa bằng `Delete block` hoặc phím Delete.
 - `Loop`: bấm hoặc kéo khối `Loop` viền xanh ở cột trái để thêm vùng lặp trống cao bằng một hàng khối, rồi kéo khối vào, vùng lặp tự giãn theo. Hoặc kéo chuột khoanh các khối liên tiếp rồi bấm `Create loop`, để phần đăng nhập nằm ngoài vùng lặp. Lặp theo từng hàng Excel hoặc theo số lần cố định. Mỗi quy trình có một vùng lặp.
 - `Clear all`: xóa mọi khối, vùng lặp và cấu hình Excel của quy trình, sau khi hỏi xác nhận. Giữ tên quy trình, file Excel, Secrets và lịch sử chạy. `Undo` khôi phục được khi quy trình còn đang mở.
@@ -188,6 +189,10 @@ python tools/build_package.py
 - Rê chuột vào tên file Excel đã chọn thì hiện popup đường dẫn đầy đủ.
 - Mỗi worker có Job Object riêng, `Stop` kết thúc đúng job đó thay vì `taskkill /T`, vốn dò theo số PID cha mà Windows dùng lại cho chương trình khác.
 
+### 0.1.10
+- Thêm nút hình mắt ẩn/hiện cho ô nhập, cho gõ tay mật khẩu ở khối `Login`.
+- Thanh dưới không còn đẩy `Run` xuống dòng ở màn hình rộng, dòng chữ số hàng tự rút gọn.
+
 ## File chính
 
 Toàn bộ nằm trong `web_handler/`.
@@ -214,7 +219,7 @@ Toàn bộ nằm trong `web_handler/`.
 | `tests/` | `test_i18n.py`, `test_core.py`, `test_html_reader.py`, `test_shutdown.py`, `test_integration.py`, `test_ui.py`, `test_probe.py` |
 | `tools/` | `build_package.py`, `installer.iss`, `build_probe.py`, các file requirements |
 | `probe/` | Công cụ dò khả năng chạy trên máy công ty |
-| `dist/` | `WebHandler-Setup-0.1.9.exe`, `WebHandler-0.1.9.zip`, các bản 0.1.3 đến 0.1.8, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
+| `dist/` | `WebHandler-Setup-0.1.10.exe`, `WebHandler-0.1.10.zip`, các bản 0.1.3 đến 0.1.9, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
 
 Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-handler-design.md`, kế hoạch trong `plans/`.
 

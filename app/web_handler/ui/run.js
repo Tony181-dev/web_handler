@@ -1,6 +1,7 @@
 'use strict';
 
 async function startRunFlow(editor, mode, options) {
+  await editor.flushPassword();
   await editor.save.flush();
   runWithConfirmation(editor.id, editor.excelPath, mode, options || {});
 }

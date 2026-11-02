@@ -517,7 +517,6 @@
   "Account field": "Ô tài khoản",
   "no account yet": "chưa có tài khoản",
   "Leave empty and the tool finds the form by itself. Fill in only if it finds the wrong one.": "Để trống thì tool tự tìm form. Chỉ điền khi tool tìm sai.",
-  "Chosen from Secrets, so the password stays out of the flow file.": "Chọn từ mục Bí mật, để mật khẩu không nằm trong file quy trình.",
   "A secret name cannot be empty, start or end with a space, or hold { or }.": "Tên bí mật không được để trống, không bắt đầu hay kết thúc bằng dấu cách, và không chứa { hoặc }.",
   "A name you choose, used to pick this secret in a block.": "Tên do bạn đặt, dùng để chọn bí mật này trong khối.",
   "The real account or password. Any characters are allowed.": "Tài khoản hoặc mật khẩu thật. Được dùng mọi ký tự.",
@@ -566,5 +565,11 @@
   "Run and Run once open the window and bring it to the front.": "Chạy và Chạy thử 1 lần sẽ mở cửa sổ và đưa lên trước.",
   "Run and Run once keep the window in the taskbar. Click it there to see it.": "Chạy và Chạy thử 1 lần giữ cửa sổ dưới taskbar. Bấm vào đó để xem.",
   "Run and Run once have no window at all. A Manual step block cannot be used.": "Chạy và Chạy thử 1 lần không mở cửa sổ nào. Không dùng được khối Làm tay.",
-  "A Manual step block needs a window. Switch the browser to Visible or Offscreen.": "Khối Làm tay cần có cửa sổ. Hãy chuyển trình duyệt sang Hiện hoặc Thu nhỏ."
+  "A Manual step block needs a window. Switch the browser to Visible or Offscreen.": "Khối Làm tay cần có cửa sổ. Hãy chuyển trình duyệt sang Hiện hoặc Thu nhỏ.",
+  "👁 Hide/show": "👁 Ẩn/hiện",
+  "Type in": "Gõ tay",
+  "Saved secret": "Bí mật đã lưu",
+  "Saved. Type here to change it.": "Đã lưu. Gõ vào đây để đổi.",
+  "Type the password": "Nhập mật khẩu",
+  "Saved in Windows Credential Manager under Secrets, not in the flow file.": "Được lưu trong Trình quản lý thông tin xác thực của Windows, ở mục Bí mật, không nằm trong file quy trình."
 }

@@ -376,14 +376,15 @@ class BuilderTests(AppTestCase):
         self.assertEqual(self.page.locator("[data-field=password]").count(), 0)
         expect(self.page.locator("#inspector [data-mode=excel]")).to_be_visible()
         expect(self.page.locator("#inspector [data-mode=secret]")).to_have_count(0)
-        expect(self.page.locator("[data-name=password] option", has_text="Secret value of login_ui_test")).to_have_count(1)
         expect(self.page.locator("#inspector summary").first).to_have_text("Specify the login form yourself")
         self.page.locator(".tool[data-kind=login]").hover()
         expect(self.page.locator("#tool-help")).to_contain_text("2 Fill blocks and 1 Click block")
         self.page.locator("#flow-name").hover()
+        self.page.click("[data-password-mode=secret]")
         self.page.select_option("[data-name=password]", "login_ui_test")
         expect(node).not_to_have_class(re.compile("invalid"))
         expect(node).to_contain_text("me@mail.com")
+        expect(self.page.locator("[data-name=password] option", has_text="Secret value of login_ui_test")).to_have_count(1)
         self.shot("login_block")
         step = self.saved_flow()["steps"][0]
         self.assertEqual((step["account"], step["password"]), ("me@mail.com", "{{secret:login_ui_test}}"))
@@ -1353,6 +1354,92 @@ class ExcelNamePopupTests(AppTestCase):
         self.new_flow()
         self.page.locator("#excel-name").hover()
         expect(self.page.locator("#tool-help")).to_have_count(0)
+
+
+class HideShowTests(AppTestCase):
+    def test_fill_value_shows_by_default_and_the_eye_hides_it_without_changing_it(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=fill]").click()
+        box = self.page.locator("[data-field=value]")
+        expect(box).to_have_attribute("type", "text")
+        box.fill("noi dung")
+        eye = self.page.locator(".eye-toggle")
+        expect(eye).to_have_text("👁 Hide/show")
+        eye.click()
+        expect(box).to_have_attribute("type", "password")
+        expect(box).to_have_value("noi dung")
+        self.assertEqual(self.saved_flow()["steps"][0]["value"], "noi dung")
+        eye.click()
+        expect(box).to_have_attribute("type", "text")
+
+    def test_other_text_boxes_have_no_eye(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        expect(self.page.locator("[data-field=url]")).to_be_visible()
+        expect(self.page.locator(".eye-toggle")).to_have_count(0)
+
+    def test_typed_password_is_hidden_and_stays_out_of_the_flow_file(self):
+        self.new_flow()
+        flow_id = self.page.url.rsplit("/", 1)[-1]
+        self.page.locator(".tool[data-kind=login]").click()
+        step_id = self.saved_flow()["steps"][0]["id"]
+        name = f"password_{flow_id}_{step_id}"
+        self.addCleanup(secret_store.delete_secret, name)
+        box = self.page.locator("#login-password")
+        expect(box).to_have_attribute("type", "password")
+        self.page.locator("[data-field=account]").fill("demo")
+        box.fill("g0-t@y!")
+        self.page.locator("#inspector .eye-field", has=box).locator(".eye-toggle").click()
+        expect(box).to_have_attribute("type", "text")
+        expect(box).to_have_value("g0-t@y!")
+        expect(self.page.locator("#canvas .node").first).not_to_have_class(re.compile("invalid"))
+        stored = self.saved_flow()["steps"][0]
+        self.assertEqual(stored["password"], "{{secret:" + name + "}}")
+        self.page.wait_for_timeout(600)
+        self.assertEqual(secret_store.get_secret(name), "g0-t@y!")
+        self.assertNotIn("g0-t@y!", (Path(DATA) / "flows" / f"{flow_id}.json").read_text(encoding="utf-8"))
+
+        self.page.reload()
+        self.page.locator("#canvas .node").first.click()
+        box = self.page.locator("#login-password")
+        expect(box).to_have_value("")
+        expect(box).to_have_attribute("placeholder", "Saved. Type here to change it.")
+        self.assertNotIn("g0-t@y!", self.page.content())
+        self.page.click("[data-password-mode=secret]")
+        expect(self.page.locator("[data-name=password]")).to_have_value(name)
+
+    def test_a_typed_password_logs_in_when_run_straight_away(self):
+        self.new_flow()
+        flow_id = self.page.url.rsplit("/", 1)[-1]
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.page.locator(".tool[data-kind=login]").click()
+        self.page.locator("[data-field=account]").fill("demo")
+        self.page.locator("#login-password").fill("demo-password")
+        self.addCleanup(secret_store.delete_secret, f"password_{flow_id}_s2")
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
+        self.assertNotIn("demo-password", self.page.locator("#run-page").inner_text())
+
+    def test_undo_does_not_bring_a_typed_password_into_the_page(self):
+        self.new_flow()
+        flow_id = self.page.url.rsplit("/", 1)[-1]
+        self.page.locator(".tool[data-kind=login]").click()
+        self.addCleanup(secret_store.delete_secret, f"password_{flow_id}_s1")
+        self.page.locator("#login-password").fill("khong-lo")
+        self.page.wait_for_timeout(600)
+        self.page.click("#undo")
+        self.assertEqual(self.page.evaluate("window.currentEditor.flow.steps[0].password"), "")
+        self.assertNotIn("khong-lo", self.page.evaluate("JSON.stringify(window.currentEditor.history)"))
+
+    def test_run_button_stays_on_the_same_line(self):
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-sheet")).to_be_visible()
+        run = self.page.locator("#run-full").bounding_box()
+        pick = self.page.locator("#pick-excel").bounding_box()
+        self.assertLess(abs((run["y"] + run["height"] / 2) - (pick["y"] + pick["height"] / 2)), 4)
+        self.assertLessEqual(run["x"] + run["width"], self.page.viewport_size["width"])
 
 
 class BrandTests(AppTestCase):

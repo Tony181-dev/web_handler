@@ -188,6 +188,9 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .delay-field { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .delay-field summary { cursor: pointer; font-weight: 600; }
 .delay-field .field { margin-top: 8px; }
+.eye-field { display: flex; align-items: center; gap: 6px; }
+.eye-field input { flex: 1; min-width: 0; }
+.eye-toggle { flex: none; font-size: 11px; font-weight: 500; }
 .finder-box { padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .finder-box .field { margin-bottom: 6px; }
 .canvas-log { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; right: 8px; bottom: 8px; z-index: 6; }
@@ -219,10 +222,14 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 
 .runbar { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 9px 14px; background: var(--surface); border-top: 1px solid var(--border); }
+.runbar .btn, .runbar input, .runbar select { flex: none; }
+@media (min-width: 981px) {
+  .runbar { flex-wrap: nowrap; }
+}
 .runbar input[type=number] { width: 66px; text-align: center; padding: 4px; }
 .runbar select { width: auto; max-width: 150px; padding: 4px 7px; }
 .file-name { max-width: 240px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
-.count-pill { padding: 2px 9px; border-radius: 10px; background: var(--loop-soft); color: var(--loop-text); font-weight: 700; white-space: nowrap; }
+.count-pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 2px 9px; border-radius: 10px; background: var(--loop-soft); color: var(--loop-text); font-weight: 700; white-space: nowrap; }
 .save-state { font-size: 12px; color: var(--muted); min-width: 56px; }
 
 /* Modal */

@@ -4,6 +4,7 @@ const INSPECTOR_MIN_WIDTH = 320;
 const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
 const INSPECTOR_KEY_STEP = 16;
 const HISTORY_LIMIT = 200;
+const PASSWORD_SAVE_DELAY_MS = 300;
 const BROWSER_MODES = {
   visible: ['Browser: Visible', 'Run and Run once open the window and bring it to the front.'],
   offscreen: ['Browser: Offscreen', 'Run and Run once keep the window in the taskbar. Click it there to see it.'],
@@ -23,6 +24,8 @@ class FlowEditor {
     this.sheets = [];
     this.excelPath = memory.get('excel.' + id) || '';
     this.sourceModes = {};
+    this.hiddenValues = new Set();
+    this.pendingPassword = null;
     this.approvedSteps = new Set();
     this.litSteps = new Set();
     this.failedStep = null;
@@ -114,6 +117,25 @@ class FlowEditor {
   selectMany(ids) {
     this.selection = new Set(ids);
     this.render();
+  }
+
+  // A typed password waits here only until it is saved, and is never part of the flow or its history.
+
+  typePassword(name, value) {
+    this.pendingPassword = { name, value };
+    clearTimeout(this.passwordTimer);
+    this.passwordTimer = setTimeout(() => this.flushPassword(), PASSWORD_SAVE_DELAY_MS);
+  }
+
+  async flushPassword() {
+    clearTimeout(this.passwordTimer);
+    const pending = this.pendingPassword;
+    this.pendingPassword = null;
+    if (!pending) return;
+    try {
+      await api('POST', '/api/secrets', pending);
+      await this.loadSecrets();
+    } catch (error) { showError(error); }
   }
 
   // Changes
@@ -408,6 +430,7 @@ class FlowEditor {
     if (!sheet) { this.rowCountNode.textContent = ''; return; }
     if (!settings.end_row) {
       this.rowCountNode.textContent = runsUntilText(stopColumn(this.flow));
+      this.rowCountNode.title = this.rowCountNode.textContent;
       return;
     }
     const start = settings.start_row || 2;
@@ -516,6 +539,7 @@ async function renderBuilder(id) {
   document.addEventListener('keydown', editor.onKey);
   window.leaveView = () => {
     document.removeEventListener('keydown', editor.onKey);
+    editor.flushPassword();
     editor.save.flush();
     window.leaveView = null;
     window.onSecretsChanged = null;

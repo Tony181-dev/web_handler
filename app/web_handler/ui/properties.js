@@ -54,19 +54,81 @@ function valueField(editor, step, key, label, options) {
   return el('div.field', null, el('label.field-label', { text: label }), tabs, panes[mode]());
 }
 
+// A button that hides or shows what a box holds. It only covers the screen: it does not change what is saved.
+function withEye(input, startHidden, onChange) {
+  let hidden = startHidden;
+  const apply = () => {
+    input.type = hidden ? 'password' : 'text';
+    button.setAttribute('aria-pressed', String(hidden));
+  };
+  const button = el('button.btn.small.eye-toggle', {
+    type: 'button', text: t('👁 Hide/show'),
+    onclick: () => {
+      hidden = !hidden;
+      apply();
+      if (onChange) onChange(hidden);
+    },
+  });
+  apply();
+  return el('div.eye-field', null, input, button);
+}
+
 function textPane(editor, step, key, settings) {
   const input = el('input', {
     type: 'text',
     class: key === 'url' ? 'mono' : null,
     value: step[key] || '',
     placeholder: settings.placeholder || t('Type fixed text'),
+    autocomplete: 'off',
     'data-field': key,
     oninput: () => {
       step[key] = input.value;
       editor.changedQuietly();
     },
   });
-  return el('div', null, input, settings.hint ? el('div.hint', { text: settings.hint }) : null);
+  const memoKey = `${step.id}.${key}`;
+  const hideable = (step.do === 'fill' && key === 'value') || key === 'account';
+  const box = hideable
+    ? withEye(input, editor.hiddenValues.has(memoKey), hidden => {
+      if (hidden) editor.hiddenValues.add(memoKey);
+      else editor.hiddenValues.delete(memoKey);
+    })
+    : input;
+  return el('div', null, box, settings.hint ? el('div.hint', { text: settings.hint }) : null);
+}
+
+// A typed password goes to Windows Credential Manager under this block's own name, never into the flow file.
+function passwordField(editor, step) {
+  const ownName = `password_${editor.id}_${step.id}`;
+  const [, secret] = sourceOf(step.password);
+  const memoKey = `${step.id}.password`;
+  const mode = editor.sourceModes[memoKey] || (secret && secret !== ownName ? 'secret' : 'typed');
+  const tabs = el('div.tabs', { role: 'tablist', 'aria-label': t('Password') }, [['typed', t('Type in')], ['secret', t('Saved secret')]].map(([value, text]) => el('button', {
+    class: mode === value ? 'on' : null,
+    role: 'tab',
+    'data-password-mode': value,
+    text,
+    onclick: () => {
+      editor.sourceModes[memoKey] = value;
+      editor.renderInspector();
+    },
+  })));
+  if (mode === 'secret') {
+    return el('div.field', null, el('label.field-label', { text: t('Password') }), tabs,
+      namePane(editor, step, 'password', 'secret', secret, editor.secretNames));
+  }
+  const input = el('input', {
+    type: 'password', id: 'login-password', autocomplete: 'new-password',
+    placeholder: secret ? t('Saved. Type here to change it.') : t('Type the password'),
+    oninput: () => {
+      if (!input.value) return;
+      step.password = `{{secret:${ownName}}}`;
+      editor.typePassword(ownName, input.value);
+      editor.changedQuietly();
+    },
+  });
+  return el('div.field', null, el('label.field-label', { text: t('Password') }), tabs, withEye(input, true),
+    el('div.hint', { text: t('Saved in Windows Credential Manager under Secrets, not in the flow file.') }));
 }
 
 function columnPane(editor, step, key, name, memoKey) {
@@ -185,9 +247,7 @@ const STEP_FORMS = {
   },
   login(panel, editor, step) {
     panel.append(valueField(editor, step, 'account', t('Account'), { noSecret: true }));
-    const [, secret] = sourceOf(step.password);
-    panel.append(field(t('Password'), namePane(editor, step, 'password', 'secret', secret, editor.secretNames),
-      t('Chosen from Secrets, so the password stays out of the flow file.')));
+    panel.append(passwordField(editor, step));
     const finding = ['account', 'password', 'submit'].map(name => textField(editor, step, `${name}_selector`, t(LOGIN_SELECTOR_LABELS[name]), { mono: true }));
     panel.append(el('details', null, el('summary', { text: t('Specify the login form yourself') }),
       el('div.hint', { text: t('Leave empty and the tool finds the form by itself. Fill in only if it finds the wrong one.'), style: 'margin:6px 0' }),
@@ -584,6 +644,7 @@ async function inspectAtBlock(editor, step, command) {
     if (!await confirmBox(t('Really run the blocks before this one?'), message, t('Run to here'))) return null;
     unapproved.forEach(item => editor.approvedSteps.add(item.id));
   }
+  await editor.flushPassword();
   await editor.save.flush();
   editor.litSteps = new Set();
   const response = await watchInspection({

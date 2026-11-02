@@ -85,7 +85,10 @@ async function start() {
   setInterval(refreshActiveJob, ACTIVE_JOB_POLL_MS);
   window.addEventListener('hashchange', route);
   window.addEventListener('beforeunload', () => {
-    if (window.currentEditor) window.currentEditor.save.flush();
+    if (window.currentEditor) {
+      window.currentEditor.flushPassword();
+      window.currentEditor.save.flush();
+    }
   });
   await refreshActiveJob();
   route();
