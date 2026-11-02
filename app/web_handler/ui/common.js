@@ -39,6 +39,7 @@ function t(text, values) {
 const READ_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 30000;
 const LONG_REQUEST_TIMEOUT_MS = 180000;
+const LANGUAGE_REQUEST_TIMEOUT_MS = 3000;
 
 // Reads are retried: a network filter can drop a local response now and then.
 async function api(method, path, body, options) {
@@ -199,7 +200,8 @@ const STEP_HELP = {
 
 async function loadLanguage() {
   try {
-    const { language } = await api('GET', '/api/language');
+    // Nothing shows until this answers, so a dropped answer must not leave the page blank for long.
+    const { language } = await api('GET', '/api/language', undefined, { timeout: LANGUAGE_REQUEST_TIMEOUT_MS });
     if (language !== 'en') translations = await (await fetch(`/ui/lang/${language}.json`)).json();
     currentLanguage = language;
   } catch (error) { /* The interface still works in English. */ }

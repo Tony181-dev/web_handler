@@ -17,9 +17,14 @@ from .system_log import SystemLog
 
 DEMO_FLOW_ID = "demo"
 PING_ATTEMPTS = 3
-EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xls")
 MAX_BODY_BYTES = 30 * 1024 * 1024
 SERVER_FILE = "server.json"
+
+
+class Server(ThreadingHTTPServer):
+    # A page load opens a dozen connections at once. Past this queue Windows refuses them,
+    # scripts fail to load and the app stays blank.
+    request_queue_size = 128
 
 
 class ApiError(Exception):
@@ -102,13 +107,6 @@ class App:
         return {"id": DEMO_FLOW_ID, "excel_path": str(excel_path), "url": f"{self.base_url}/demo/"}
 
     # Excel
-
-    def open_excel(self, path):
-        """Open the file in Excel. Only Excel files, as this asks Windows to run whatever opens them."""
-        file = Path(path or "")
-        if file.suffix.lower() not in EXCEL_SUFFIXES or not file.is_file():
-            raise ApiError(t("There is no such Excel file."), 404)
-        os.startfile(file)
 
     def excel_info(self, path):
         from . import excel
@@ -389,9 +387,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(app.make_demo())
         if head == "active":
             return self.api_active(method, rest)
-        if head == "excel" and rest == ["open"] and method == "POST":
-            app.open_excel(self.read_json().get("path"))
-            return self.send_json({"ok": True})
         if head == "excel" and method == "POST":
             return self.send_json(app.excel_info(self.read_json().get("path", "")))
         if head == "html" and method == "POST":
@@ -660,11 +655,11 @@ def create_server():
     server = None
     if saved.get("port"):
         try:
-            server = ThreadingHTTPServer(("127.0.0.1", saved["port"]), handler)
+            server = Server(("127.0.0.1", saved["port"]), handler)
         except OSError:
             server = None
     if server is None:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        server = Server(("127.0.0.1", 0), handler)
     server.daemon_threads = True
     app.port = server.server_address[1]
     save_address(app.port, key)

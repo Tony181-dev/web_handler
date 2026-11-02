@@ -121,7 +121,10 @@ function renderCanvas(editor) {
   const flow = editor.flow;
   canvas.replaceChildren();
 
-  if (editor.selection.size > 1) canvas.append(renderSelectionBar(editor));
+  // Always there, so that the bar appearing does not push the blocks down.
+  const loop = findLoop(flow);
+  const showBar = editor.selection.size > 0 && !(loop && editor.selection.has(loop.id));
+  canvas.append(el('div.selection-slot', null, showBar ? renderSelectionBar(editor) : null));
 
   if (!flow.steps.length) {
     canvas.append(el('div.canvas-empty', null,
@@ -196,8 +199,9 @@ function renderSelectionBar(editor) {
       title: problem || '',
       onclick: () => makeLoop(editor),
     }),
+    el('button.btn.small', { id: 'duplicate-selection', text: t('Duplicate'), onclick: () => editor.duplicateSelection() }),
     el('button.btn.small.danger', { text: t('Delete'), onclick: () => editor.deleteSelection() }),
-    problem ? el('span.muted', { id: 'loop-problem', text: problem }) : null);
+    problem && editor.selection.size > 1 ? el('span.muted', { id: 'loop-problem', text: problem, title: problem }) : null);
 }
 
 // The same diagram, read-only, showing how far a run has got. stateOf(id) gives a class or null.

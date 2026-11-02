@@ -3,6 +3,7 @@
 const INSPECTOR_MIN_WIDTH = 320;
 const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
 const INSPECTOR_KEY_STEP = 16;
+const HISTORY_LIMIT = 200;
 
 class FlowEditor {
   constructor(id, flow) {
@@ -22,9 +23,62 @@ class FlowEditor {
     this.failedStep = null;
     this.save = debounce(() => this.persist(), 500);
     this.onKey = event => this.handleKey(event);
+    this.resetHistory();
+  }
+
+  // History: what Undo and Redo move through, kept while this flow stays open.
+
+  snapshot() {
+    return JSON.stringify({ flow: this.flow, excelPath: this.excelPath });
+  }
+
+  resetHistory() {
+    this.history = [this.snapshot()];
+    this.historyIndex = 0;
+    this.refreshHistoryButtons();
+  }
+
+  recordHistory() {
+    const current = this.snapshot();
+    if (current === this.history[this.historyIndex]) return;
+    this.history.length = this.historyIndex + 1;
+    this.history.push(current);
+    if (this.history.length > HISTORY_LIMIT) this.history.shift();
+    this.historyIndex = this.history.length - 1;
+    this.refreshHistoryButtons();
+  }
+
+  refreshHistoryButtons() {
+    if (!this.undoNode) return;
+    const unrecorded = this.snapshot() !== this.history[this.historyIndex];
+    this.undoNode.disabled = this.historyIndex === 0 && !unrecorded;
+    this.redoNode.disabled = this.historyIndex === this.history.length - 1 || unrecorded;
+  }
+
+  moveInHistory(step) {
+    this.save.cancel();
+    this.recordHistory();
+    const index = this.historyIndex + step;
+    if (index < 0 || index >= this.history.length) return;
+    this.historyIndex = index;
+    const { flow, excelPath } = JSON.parse(this.history[index]);
+    // The same object stays in use, as the name box and the panels hold on to it.
+    Object.keys(this.flow).forEach(key => { delete this.flow[key]; });
+    Object.assign(this.flow, flow);
+    this.selection = new Set([...this.selection].filter(id => findStep(this.flow, id)));
+    this.pastedInfo = null;
+    this.pagedElements = null;
+    this.pasted = {};
+    this.failedStep = null;
+    if (this.nameNode) this.nameNode.value = this.flow.name;
+    this.setSaveState(t('Not saved'));
+    this.save();
+    if (excelPath !== this.excelPath) this.loadExcel(excelPath);
+    else this.render();
   }
 
   async persist() {
+    this.recordHistory();
     this.setSaveState(t('Saving...'));
     try {
       await api('PUT', '/api/flows/' + this.id, this.flow);
@@ -59,6 +113,7 @@ class FlowEditor {
   // Changes
 
   changed() {
+    this.recordHistory();
     this.setSaveState(t('Not saved'));
     this.save();
     this.render();
@@ -70,6 +125,7 @@ class FlowEditor {
     this.save();
     renderCanvas(this);
     this.showRowCount();
+    this.refreshHistoryButtons();
   }
 
   makeStep(kind) {
@@ -120,6 +176,26 @@ class FlowEditor {
     this.changed();
   }
 
+  duplicateSelection() {
+    const loop = findLoop(this.flow);
+    const copies = [];
+    for (const list of [this.flow.steps, loop ? loop.steps : []]) {
+      const chosen = list.filter(step => this.selection.has(step.id) && step.do !== 'loop');
+      if (!chosen.length) continue;
+      let position = list.indexOf(chosen[chosen.length - 1]) + 1;
+      for (const step of chosen) {
+        const copy = JSON.parse(JSON.stringify(step));
+        copy.id = nextStepId(this.flow);
+        list.splice(position, 0, copy);
+        position += 1;
+        copies.push(copy.id);
+      }
+    }
+    if (copies.length === 1) this.select(copies[0]);
+    else this.selectMany(copies);
+    this.changed();
+  }
+
   deleteSelection() {
     for (const id of this.selection) {
       const list = listContaining(this.flow, id);
@@ -141,7 +217,7 @@ class FlowEditor {
   }
 
   async clearAll() {
-    const message = t('Deletes {count} block(s), the loop and the Excel setup of this flow. This cannot be undone. The Excel file and Secrets stay as they are.', { count: this.blockCount() });
+    const message = t('Deletes {count} block(s), the loop and the Excel setup of this flow. The Excel file and Secrets stay as they are. Undo brings it back while this flow stays open.', { count: this.blockCount() });
     if (!await confirmBox(t('Clear the whole flow?'), message, t('Clear all'), 'danger')) return;
     this.flow.steps = [];
     this.flow.excel = null;
@@ -153,10 +229,16 @@ class FlowEditor {
   }
 
   handleKey(event) {
-    if (event.key !== 'Delete') return;
     const tag = document.activeElement && document.activeElement.tagName;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
     if (document.querySelector('.modal-back')) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && (key === 'z' || key === 'y')) {
+      event.preventDefault();
+      this.moveInHistory(key === 'y' || event.shiftKey ? 1 : -1);
+      return;
+    }
+    if (event.key !== 'Delete') return;
     if (this.selection.size) {
       const only = this.selection.size === 1 ? findStep(this.flow, [...this.selection][0]) : null;
       if (only && only.do === 'loop') return;
@@ -217,6 +299,7 @@ class FlowEditor {
     } catch (error) {
       showError(error);
     }
+    this.recordHistory();
     this.render();
   }
 
@@ -227,7 +310,6 @@ class FlowEditor {
     this.renderInspector();
     this.renderRunbar();
     this.clearNode.disabled = this.isEmpty();
-    this.openExcelNode.disabled = !this.excelPath;
   }
 
   renderInspector() {
@@ -284,9 +366,14 @@ class FlowEditor {
       parts.push(el('span', { text: t('Number of runs') }), count);
     }
     this.saveStateNode = el('span.save-state', { text: this.saveStateNode ? this.saveStateNode.textContent : '' });
+    this.undoNode = el('button.btn', { id: 'undo', text: t('↶ Undo'), title: t('Undo the last change (Ctrl+Z)'), onclick: () => this.moveInHistory(-1) });
+    this.redoNode = el('button.btn', { id: 'redo', text: t('↷ Redo'), title: t('Redo the change (Ctrl+Y)'), onclick: () => this.moveInHistory(1) });
+    this.refreshHistoryButtons();
     parts.push(
       el('span.spacer'),
       this.saveStateNode,
+      this.undoNode,
+      this.redoNode,
       el('button.btn', { id: 'run-trial', text: t('Run once'), onclick: () => startRunFlow(this, 'trial') }),
       el('button.btn.primary', { id: 'run-full', text: t('▶ Run'), onclick: () => startRunFlow(this, 'full') }));
     bar.replaceChildren(...parts);
@@ -372,6 +459,7 @@ async function renderBuilder(id) {
       editor.save();
     },
   });
+  editor.nameNode = nameInput;
   setTopbarTitle(nameInput);
 
   editor.canvasNode = el('div.canvas', { id: 'canvas' });
@@ -380,10 +468,6 @@ async function renderBuilder(id) {
   editor.runbarNode = el('div.runbar', { id: 'runbar' });
   editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: t('Clear all'), style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
 
-  editor.openExcelNode = attachHelp(el('button.btn', {
-    id: 'open-excel', text: t('Open Excel'),
-    onclick: () => api('POST', '/api/excel/open', { path: editor.excelPath }).catch(showError),
-  }), t('Opens the chosen Excel file in Windows.'));
   attachHelp(editor.clearNode, t('Deletes every block, the loop and the Excel setup of this flow.'));
 
   const palette = el('nav.palette', { 'aria-label': t('Block types') },
@@ -403,7 +487,7 @@ async function renderBuilder(id) {
     el('div', { style: 'height:10px' }),
     attachHelp(el('button.btn.record', { id: 'start-record', text: t('● Record'), style: 'width:100%', onclick: () => startRecording(editor) }), t('Do the work once by hand in Chrome, and the tool turns it into blocks.')),
     editor.clearNode,
-    el('div.palette-foot', null, logButton(), editor.openExcelNode));
+    el('div.palette-foot', null, logButton()));
 
   const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
   builder.append(inspectorResizer(builder));
@@ -422,4 +506,6 @@ async function renderBuilder(id) {
   await editor.loadSecrets();
   editor.render();
   if (editor.excelPath) await editor.loadExcel(editor.excelPath);
+  // Filling in what the open Excel file shows is not something to undo.
+  editor.resetHistory();
 }

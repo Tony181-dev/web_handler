@@ -146,7 +146,6 @@
   "Delete \"{name}\". This cannot be undone.": "Xóa \"{name}\". Không hoàn tác được.",
   "Delete block": "Xóa khối",
   "Delete this flow?": "Xóa quy trình?",
-  "Deletes {count} block(s), the loop and the Excel setup of this flow. This cannot be undone. The Excel file and Secrets stay as they are.": "Xóa {count} khối, vùng lặp và cấu hình Excel của quy trình này. Không hoàn tác được. File Excel và mục Bí mật vẫn giữ nguyên.",
   "Demo account": "Tài khoản demo",
   "Details": "Chi tiết",
   "Discard": "Bỏ",
@@ -539,13 +538,15 @@
   "Stop the recording before starting anything else.": "Hãy dừng ghi thao tác trước khi làm việc khác.",
   "Open running flow": "Mở quy trình đang chạy",
   "Stop now": "Dừng ngay",
-  "Open Excel": "Mở Excel",
-  "Opens the chosen Excel file in Windows.": "Mở file Excel đã chọn trên Windows.",
-  "There is no such Excel file.": "Không có file Excel này.",
   "Fills a value into a box on the page. The value can be: text you type in, the value of each cell in an Excel column, a saved Secret, or a Variable.": "Điền giá trị vào ô trên trang. Giá trị có thể là: chữ do bạn nhập, giá trị từng ô theo cột Excel, Bí mật đã lưu, hoặc Biến.",
   "Delay": "Độ trễ",
   "Delay (seconds)": "Độ trễ (giây)",
   "Enter the time to wait before moving on to the next block. Leave empty for no delay.": "Nhập thời gian chờ trước khi chuyển sang khối tiếp theo. Để trống thì không chờ.",
   "The delay of the {name} block must be a number of seconds above 0.": "Độ trễ của khối {name} phải là số giây lớn hơn 0.",
-  "author: {name}": "tác giả: {name}"
+  "author: {name}": "tác giả: {name}",
+  "Deletes {count} block(s), the loop and the Excel setup of this flow. The Excel file and Secrets stay as they are. Undo brings it back while this flow stays open.": "Xóa {count} khối, vùng lặp và cấu hình Excel của quy trình này. File Excel và mục Bí mật vẫn giữ nguyên. Bấm Hoàn tác để khôi phục khi quy trình còn đang mở.",
+  "↶ Undo": "↶ Hoàn tác",
+  "↷ Redo": "↷ Làm lại",
+  "Undo the last change (Ctrl+Z)": "Hoàn tác thay đổi vừa rồi (Ctrl+Z)",
+  "Redo the change (Ctrl+Y)": "Làm lại thay đổi (Ctrl+Y)"
 }

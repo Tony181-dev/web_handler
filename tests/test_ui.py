@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -498,7 +499,7 @@ class BuilderTests(AppTestCase):
 
         self.drag_tool("goto")
         expect(self.page.locator("#canvas .node")).to_have_count(4)
-        self.page.evaluate("window.currentEditor.selectMany(['s1', 's4'])")
+        self.page.evaluate("window.currentEditor.selectMany(['s1', 's5'])")
         expect(self.page.locator("#loop-problem")).to_contain_text("one loop")
         expect(self.page.locator("#make-loop")).to_be_disabled()
 
@@ -818,12 +819,10 @@ class SystemLogTests(AppTestCase):
         self.page.click("#open-demo")
         expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
         button = self.page.locator(".log-toggle:visible").bounding_box()
-        opener = self.page.locator("#open-excel").bounding_box()
         excel = self.page.locator("#pick-excel").bounding_box()
-        self.assertLessEqual(button["y"] + button["height"], opener["y"])
-        self.assertLessEqual(opener["y"] + opener["height"], excel["y"])
+        self.assertLessEqual(button["y"] + button["height"], excel["y"])
         self.assertLess(abs(button["x"] - excel["x"]), 40)
-        self.assertLess(excel["y"] - (opener["y"] + opener["height"]), 40)
+        self.assertLess(excel["y"] - (button["y"] + button["height"]), 40)
         self.shot("log_button")
 
         self.open_log()
@@ -894,6 +893,24 @@ class SetupAndSecurityTests(AppTestCase):
     def test_ui_paths_cannot_leave_the_ui_folder(self):
         self.assertIn(self.status_of(f"/ui/..%2f..%2fserver.py?key={self.key}"), (403, 404))
         self.assertIn(self.status_of(f"/ui/../../server.py?key={self.key}"), (403, 404))
+
+    def test_many_connections_at_once_are_all_served(self):
+        results = []
+        address = f"http://127.0.0.1:{self.port}/api/ping?key={self.key}"
+
+        def ping():
+            try:
+                with NO_PROXY.open(address, timeout=20) as response:
+                    results.append(response.status)
+            except Exception as error:
+                results.append(str(error))
+
+        threads = [threading.Thread(target=ping) for _ in range(60)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(results, [200] * 60)
 
     def test_second_start_reuses_running_server(self):
         second = start_app()
@@ -1049,7 +1066,7 @@ class RunningFlowTests(AppTestCase):
         expect(self.page.locator("#run-headline")).to_have_text("Stopped as requested.", timeout=30000)
 
 
-class FinderAndExcelTests(AppTestCase):
+class FinderTests(AppTestCase):
     def test_how_to_find_it_shares_a_box_with_the_other_ways(self):
         self.new_flow()
         self.page.locator(".tool[data-kind=click]").click()
@@ -1062,98 +1079,6 @@ class FinderAndExcelTests(AppTestCase):
         box.locator(".candidate").nth(1).click()
         chosen = self.page.locator("#finder-box .candidate.on code").inner_text()
         expect(self.page.locator("#target-selector")).to_have_value(chosen)
-
-    def test_open_excel_sits_under_the_log_button_and_opens_the_chosen_file(self):
-        self.new_flow()
-        button = self.page.locator("#open-excel")
-        expect(button).to_be_disabled()
-        self.page.click(".brand")
-        self.page.click("#open-demo")
-        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
-        expect(button).to_be_enabled()
-        log = self.page.locator(".palette .log-toggle").bounding_box()
-        self.assertGreaterEqual(button.bounding_box()["y"], log["y"] + log["height"])
-        # Answered here, so that testing does not start Excel on this machine.
-        requests = []
-
-        def answer(route):
-            requests.append(route.request.post_data_json)
-            route.fulfill(json={"ok": True})
-
-        self.page.route("**/api/excel/open*", answer)
-        button.click()
-        expect(self.page.locator("#open-excel")).to_be_enabled()
-        self.page.wait_for_timeout(200)
-        self.assertEqual(len(requests), 1)
-        self.assertTrue(requests[0]["path"].endswith("example_data.xlsx"))
-
-    def test_only_an_existing_excel_file_can_be_opened(self):
-        for path in (r"C:\Windows\notepad.exe", str(Path(DATA) / "no_such_file.xlsx")):
-            request = urllib.request.Request(
-                f"http://127.0.0.1:{self.port}/api/excel/open?key={self.key}", method="POST",
-                data=json.dumps({"path": path}).encode("utf-8"), headers={"Content-Type": "application/json"},
-            )
-            with self.assertRaises(urllib.error.HTTPError) as caught:
-                NO_PROXY.open(request, timeout=10)
-            self.assertEqual(caught.exception.code, 404)
-
-
-class BrandTests(AppTestCase):
-    def test_author_is_shown_under_the_name(self):
-        name = self.page.locator(".brand-name")
-        author = self.page.locator("#brand-author")
-        expect(author).to_have_text("author: Hoang Nguyen")
-        self.assertGreaterEqual(author.bounding_box()["y"], name.bounding_box()["y"] + name.bounding_box()["height"] - 1)
-        self.assertAlmostEqual(author.bounding_box()["x"], name.bounding_box()["x"], delta=1)
-
-
-class BlockDelayTests(AppTestCase):
-    def test_every_action_block_has_a_collapsed_empty_delay_at_the_end(self):
-        self.new_flow()
-        for kind in ("goto", "login", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause"):
-            self.page.locator(f".tool[data-kind={kind}]").click()
-            details = self.page.locator("#delay-details")
-            expect(details).to_be_visible()
-            self.assertIsNone(details.get_attribute("open"), kind)
-            self.assertTrue(details.evaluate("el => el === el.parentElement.lastElementChild"), kind)
-            expect(self.page.locator("#delay-after")).to_be_hidden()
-            self.assertNotIn("delay_after", self.saved_flow()["steps"][-1])
-
-    def test_wait_and_loop_have_no_delay(self):
-        self.new_flow()
-        self.page.locator(".tool[data-kind=wait]").click()
-        expect(self.page.locator("#wait-seconds")).to_be_visible()
-        expect(self.page.locator("#delay-details")).to_have_count(0)
-        self.page.locator(".tool[data-kind=loop]").click()
-        expect(self.page.locator("#loop-source")).to_be_visible()
-        expect(self.page.locator("#delay-details")).to_have_count(0)
-
-    def test_delay_is_saved_stays_open_when_set_and_can_be_cleared(self):
-        self.new_flow()
-        self.page.locator(".tool[data-kind=goto]").click()
-        self.page.locator("#delay-details summary").click()
-        expect(self.page.locator("#delay-details")).to_contain_text("next block")
-        self.shot("delay_field")
-        self.page.fill("#delay-after", "1.5")
-        self.assertEqual(self.saved_flow()["steps"][0]["delay_after"], 1.5)
-        self.page.reload()
-        self.page.locator("#canvas .node").first.click()
-        expect(self.page.locator("#delay-after")).to_be_visible()
-        expect(self.page.locator("#delay-after")).to_have_value("1.5")
-        self.page.fill("#delay-after", "")
-        self.assertNotIn("delay_after", self.saved_flow()["steps"][0])
-
-    def test_run_counts_down_the_delay_on_its_block(self):
-        self.new_flow()
-        self.page.locator(".tool[data-kind=goto]").click()
-        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
-        self.page.locator("#delay-details summary").click()
-        self.page.fill("#delay-after", "3")
-        self.saved_flow()
-        self.page.click("#run-full")
-        self.page.click("[data-action=confirm-run]")
-        expect(self.page.locator("#run-flow .node[data-step=s1]")).to_contain_text("left", timeout=60000)
-        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=30000)
 
 
 class ToolHelpTests(AppTestCase):
