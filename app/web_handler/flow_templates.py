@@ -66,7 +66,7 @@ TEMPLATES = {
         "Logs in, then for each Excel row opens the link in column A, fills in column B and saves.",
     ),
     "read_excel": (
-        "Read into Excel", _read_excel,
+        "Get values into Excel", _read_excel,
         "For each Excel row, opens the link in column A, reads a value on the page and writes it to column B of the result file.",
     ),
     "repeat_clicks": (

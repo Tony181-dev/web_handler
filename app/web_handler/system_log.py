@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import threading
 
-from . import paths
+from . import i18n, paths
 
 MAX_LINES = 5000
 MAX_RETURNED = 1000
@@ -58,7 +58,9 @@ class SystemLog:
 
     def after(self, last_seen):
         with self.lock:
-            return [line for line in self.lines if line["id"] > last_seen][-MAX_RETURNED:]
+            found = [line for line in self.lines if line["id"] > last_seen][-MAX_RETURNED:]
+        # Each line is kept in the language of its time, which may not be the one in use now.
+        return [{**line, "text": i18n.retranslate(line["text"])} for line in found]
 
     def clear(self):
         with self.lock:

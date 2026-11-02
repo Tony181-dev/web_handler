@@ -227,6 +227,9 @@ def run_inspector(job, commands):
             break
         if command is None:
             continue
+        if command.get("language"):
+            # This browser stays open across checks, while the person may switch the language in between.
+            i18n.use(command["language"])
         action = command.get("cmd")
         if action == "stop":
             break

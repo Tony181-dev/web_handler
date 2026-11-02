@@ -35,7 +35,7 @@
   "✗ Not passed": "✗ Chưa đạt",
   "Not tried": "Chưa thử",
   "Login + Excel rows": "Đăng nhập + hàng Excel",
-  "Read into Excel": "Lấy giá trị đưa vào Excel",
+  "Get values into Excel": "Lấy giá trị đưa vào Excel",
   "Repeat clicks": "Bấm lặp lại",
   "Logs in, then for each Excel row opens the link in column A, fills in column B and saves.": "Đăng nhập, rồi mỗi hàng Excel mở link ở cột A, điền nội dung cột B và lưu.",
   "For each Excel row, opens the link in column A, reads a value on the page and writes it to column B of the result file.": "Mỗi hàng Excel mở link ở cột A, đọc một giá trị trên trang và ghi vào cột B của file kết quả.",

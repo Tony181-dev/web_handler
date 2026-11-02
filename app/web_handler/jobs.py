@@ -320,7 +320,7 @@ class JobManager:
             session = self._ensure_inspector()
             self.inspection_log = EventLog()
             self.log.add("info", t("Check: running up to the block on the live page.") if command.get("cmd") == "check" else t("Scanning the open page."))
-            session.send(command)
+            session.send({**command, "language": i18n.language()})
 
     def inspection_command(self, command):
         with self.lock:

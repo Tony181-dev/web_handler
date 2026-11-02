@@ -728,6 +728,18 @@ class SavedMessageLanguageTests(unittest.TestCase):
         i18n.use("vi")
         self.assertEqual(i18n.retranslate("Missing a value in column C"), "Thiếu giá trị ở cột C")
 
+    def test_the_log_shows_older_lines_in_the_language_in_use(self):
+        from web_handler import system_log
+        with tempfile.TemporaryDirectory() as folder:
+            with unittest.mock.patch.object(system_log.paths, "data_dir", lambda: Path(folder)):
+                log = system_log.SystemLog()
+                log.add("error", 'Phần tử này không phải ô nhập nên khối "Điền" không điền được.')
+                i18n.use("en")
+                self.assertEqual(
+                    [line["text"] for line in log.after(0)],
+                    ['This element is not an input, so the "Fill" block cannot fill it.'],
+                )
+
     def test_text_that_is_not_a_sentence_of_the_app_stays(self):
         i18n.use("en")
         self.assertEqual(i18n.retranslate("#view-summary"), "#view-summary")
