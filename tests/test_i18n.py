@@ -23,7 +23,7 @@ JS_CALL = re.compile(r"""\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")""")
 JS_DYNAMIC_CALL = re.compile(r"""\bt\(\s*[^'"\s)]""")
 # Words on screen given as bare strings instead of going through t().
 JS_BARE_TEXT = re.compile(r"""(?:\b(?:text|label|title|placeholder|hint)|'aria-label')\s*:\s*['`]([^'`]*)['`]""")
-NOT_WORDS = {"C", "D", "A, C", "https://...", "Sheet"}
+NOT_WORDS = {"C", "D", "A, C", "https://...", "Sheet", "your_account", "your_password"}
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 

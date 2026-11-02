@@ -369,7 +369,10 @@ class DemoFlowTests(IntegrationBase):
             if event["type"] == "row_start" and event["row"] == 3:
                 session.kill()
 
-        self.run_job(flow, excel_path, on_event=on_event, run_id="first")
+        # A demo row can finish before the kill lands, so hold each row open for longer than that.
+        slow = json.loads(json.dumps(flow))
+        slow["steps"][-1]["steps"].insert(0, {"id": "hold", "do": "wait", "seconds": 2})
+        self.run_job(slow, excel_path, on_event=on_event, run_id="first")
         state = runner.load_journal(self.dir / "first" / "journal.jsonl")
         self.assertEqual(state.statuses[2], "OK")
         self.assertEqual(state.statuses[3], "Unclear")

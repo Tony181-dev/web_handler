@@ -270,7 +270,7 @@ function dropPosition(editor, x, y, movingLoopAllowed) {
   return { lane: lane.dataset.lane, index, items };
 }
 
-function placeMarker(marker, position) {
+function placeMarker(marker, position, pointerY) {
   const { items, index } = position;
   if (!items.length) {
     marker.style.display = 'none';
@@ -279,6 +279,15 @@ function placeMarker(marker, position) {
   marker.style.display = 'block';
   const anchor = items[Math.min(index, items.length - 1)];
   const box = anchor.getBoundingClientRect();
+  // The next block is on a lower row, but the pointer is still at the end of this one.
+  const previous = index > 0 && index < items.length ? items[index - 1] : null;
+  if (previous && pointerY < box.top && !previous.classList.contains('block')) {
+    const node = previous.querySelector('.node').getBoundingClientRect();
+    marker.style.left = node.right + 4 + 'px';
+    marker.style.top = node.top + 'px';
+    marker.style.height = node.height + 'px';
+    return;
+  }
   marker.style.left = (index >= items.length ? box.right + 2 : box.left - 3) + 'px';
   marker.style.top = box.top + 'px';
   marker.style.height = Math.max(box.height, 40) + 'px';
@@ -304,7 +313,7 @@ function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
     ghost.style.left = moveEvent.clientX + 10 + 'px';
     ghost.style.top = moveEvent.clientY + 8 + 'px';
     const position = dropPosition(editor, moveEvent.clientX, moveEvent.clientY, allowLoop);
-    if (position) placeMarker(marker, position);
+    if (position) placeMarker(marker, position, moveEvent.clientY);
     else marker.style.display = 'none';
   };
   const finish = upEvent => {

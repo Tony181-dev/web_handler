@@ -17,8 +17,8 @@ def _login_excel():
         "excel": _excel("A", "B"),
         "steps": [
             {"do": "goto", "note": t("Login page link"), "url": ""},
-            _element("fill", t("Username field"), value="{{secret:username}}"),
-            _element("fill", t("Password field"), value="{{secret:password}}"),
+            _element("fill", t("Username field"), value="{{secret:your_account}}"),
+            _element("fill", t("Password field"), value="{{secret:your_password}}"),
             _element("click", t("Login button"), wait_navigation=True),
             {"do": "verify", "url_not_contains": "/login"},
             {

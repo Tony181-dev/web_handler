@@ -105,11 +105,11 @@ function showRecordReview(editor, entries, warnings) {
     let control = el('span.muted', { text: t('No data needed') });
     if (hasValue && isSecret) {
       const nameInput = el('input', {
-        type: 'text', class: 'mono', value: 'password', 'data-secret-name': step.id,
+        type: 'text', class: 'mono', value: 'your_password', 'data-secret-name': step.id,
         'aria-label': t('Secret name'),
         oninput: () => { step[field] = `{{secret:${nameInput.value.trim()}}}`; },
       });
-      step[field] = '{{secret:password}}';
+      step[field] = '{{secret:your_password}}';
       control = el('div', null, nameInput, el('div.hint', { text: t('The secret name. Save its value under Secrets.') }));
     } else if (hasValue) {
       const text = el('input', {

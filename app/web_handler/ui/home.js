@@ -101,8 +101,8 @@ async function openDemo() {
 
 function openSecrets() {
   const list = el('div');
-  const nameInput = el('input', { type: 'text', id: 'secret-name', placeholder: t('e.g. company_password') });
-  const valueInput = el('input', { type: 'password', id: 'secret-value', autocomplete: 'new-password' });
+  const nameInput = el('input', { type: 'text', id: 'secret-name', placeholder: 'your_account' });
+  const valueInput = el('input', { type: 'password', id: 'secret-value', placeholder: 'your_password', autocomplete: 'new-password' });
   const reload = async () => {
     const { names } = await api('GET', '/api/secrets');
     list.replaceChildren(names.length ? el('table.data', null, names.map(name => el('tr', null,
@@ -132,7 +132,7 @@ function openSecrets() {
   openModal({
     title: t('Secrets (passwords, accounts)'),
     body: el('div', null,
-      el('p.muted', { text: t('Values are kept in Windows Credential Manager and never shown again. The flow file holds only the name, for example {{secret:password}}.'), style: 'margin-bottom:12px' }),
+      el('p.muted', { text: t('Values are kept in Windows Credential Manager and never shown again. The flow file holds only the name, for example {{secret:your_password}}.'), style: 'margin-bottom:12px' }),
       list,
       el('div.divider'),
       el('div.field', null, el('label.field-label', { text: t('Name'), for: 'secret-name' }), nameInput),

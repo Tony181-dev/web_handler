@@ -373,7 +373,7 @@ function applyElement(editor, step, info, frames) {
   target.fallbacks = info.fallbacks || [];
   target.frames = frames || [];
   target.verified = false;
-  if (info.is_password && step.do === 'fill' && !step.value) step.value = '{{secret:password}}';
+  if (info.is_password && step.do === 'fill' && !step.value) step.value = '{{secret:your_password}}';
   editor.changed();
 }
 

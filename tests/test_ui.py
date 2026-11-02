@@ -307,6 +307,56 @@ class BuilderTests(AppTestCase):
         self.page.locator(".tool[data-kind=goto]").click()
         expect(self.page.locator("#canvas .node")).to_have_count(1)
 
+    def drag_until_over(self, kind, x, y):
+        tool = self.page.locator(f".tool[data-kind={kind}]").bounding_box()
+        self.page.mouse.move(tool["x"] + 20, tool["y"] + 10)
+        self.page.mouse.down()
+        self.page.mouse.move(x - 5, y, steps=4)
+        self.page.mouse.move(x, y, steps=2)
+        return self.page.locator(".drop-marker").bounding_box()
+
+    def test_marker_stays_on_the_row_when_dropping_after_its_last_block(self):
+        self.new_flow()
+        for _ in range(8):
+            self.page.locator(".tool[data-kind=wait]").click()
+        nodes = self.page.locator("#canvas .node")
+        last_in_row = next(
+            index for index in range(nodes.count() - 1)
+            if nodes.nth(index + 1).bounding_box()["y"] > nodes.nth(index).bounding_box()["y"]
+        )
+        end = nodes.nth(last_in_row).bounding_box()
+        canvas = self.page.locator("#canvas").bounding_box()
+        for x in (end["x"] + end["width"] - 10, canvas["x"] + canvas["width"] - 8):
+            marker = self.drag_until_over("fill", x, end["y"] + 20)
+            self.assertGreaterEqual(marker["x"], end["x"] + end["width"])
+            self.assertAlmostEqual(marker["y"], end["y"], delta=2)
+            # Released outside the canvas, the drag adds nothing.
+            self.page.mouse.move(canvas["x"] - 60, canvas["y"] + 500)
+            self.page.mouse.up()
+        expect(self.page.locator("#canvas .node")).to_have_count(8)
+        self.drag_until_over("fill", end["x"] + end["width"] - 10, end["y"] + 20)
+        self.page.mouse.up()
+        steps = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(steps.index("fill"), last_in_row + 1)
+
+    def test_marker_stays_beside_the_block_in_front_of_a_loop(self):
+        self.page.click("#new-flow")
+        self.page.click("[data-template=login_excel]")
+        verify = self.page.locator("#canvas [data-lane=top] > .item:not(.block) .node").last
+        expect(verify).to_be_visible()
+        box = verify.bounding_box()
+        marker = self.drag_until_over("wait", box["x"] + box["width"] + 40, box["y"] + 20)
+        self.assertGreaterEqual(marker["x"], box["x"] + box["width"])
+        self.assertAlmostEqual(marker["y"], box["y"], delta=2)
+        self.page.mouse.up()
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds[-3:], ["verify", "wait", "loop"])
+
+    def test_secret_fields_show_example_names(self):
+        self.page.click("#nav-secrets")
+        expect(self.page.locator("#secret-name")).to_have_attribute("placeholder", "your_account")
+        expect(self.page.locator("#secret-value")).to_have_attribute("placeholder", "your_password")
+
     def test_reorder_by_dragging(self):
         self.build_three()
         nodes = self.page.locator("#canvas .node")
