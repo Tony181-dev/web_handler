@@ -44,7 +44,7 @@ function stepSummary(step) {
     case 'login': {
       const [source, name] = sourceOf(step.account);
       if (source === 'excel') return t('Excel, column {name}', { name });
-      if (source === 'text') return step.account || t('no account yet');
+      if (source === 'text') return step.account ? (step.hide_account ? '••••••' : step.account) : t('no account yet');
       return name;
     }
     case 'verify': return step.url_not_contains ? t('URL without {text}', { text: step.url_not_contains }) : step.url_contains ? t('URL with {text}', { text: step.url_contains }) : (target || t('no condition yet'));
@@ -147,6 +147,7 @@ function renderItem(editor, step, index, withArrow) {
   const classes = ['node'];
   if (editor.selection.has(step.id)) classes.push(editor.selection.size > 1 ? 'multi' : 'selected');
   if (stepIsIncomplete(step)) classes.push('invalid');
+  if (step.hide_value || step.hide_account) classes.push('concealed');
   if (editor.litSteps.has(step.id)) classes.push('lit');
   if (editor.failedStep === step.id) classes.push('failed');
   const node = el('div.' + classes.join('.'), {

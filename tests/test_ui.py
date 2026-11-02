@@ -1393,6 +1393,23 @@ class HideShowTests(AppTestCase):
         eye.click()
         expect(box).to_have_attribute("type", "text")
 
+    def test_a_hidden_value_stays_hidden_after_reopening_and_the_block_shows_it(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=fill]").click()
+        self.page.locator("[data-field=value]").fill("mat khau")
+        self.page.locator(".eye-toggle").click()
+        node = self.page.locator("#canvas .node").first
+        expect(node).to_have_class(re.compile("concealed"))
+        self.assertTrue(self.saved_flow()["steps"][0]["hide_value"])
+        self.page.reload()
+        self.page.locator("#canvas .node").first.click()
+        expect(self.page.locator("[data-field=value]")).to_have_attribute("type", "password")
+        expect(self.page.locator("#canvas .node").first).to_have_class(re.compile("concealed"))
+        self.shot("hidden_fill_block")
+        self.page.locator(".eye-toggle").click()
+        expect(self.page.locator("#canvas .node").first).not_to_have_class(re.compile("concealed"))
+        self.assertNotIn("hide_value", self.saved_flow()["steps"][0])
+
     def test_other_text_boxes_have_no_eye(self):
         self.new_flow()
         self.page.locator(".tool[data-kind=goto]").click()

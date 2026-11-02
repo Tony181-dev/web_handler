@@ -25,7 +25,6 @@ class FlowEditor {
     this.sheets = [];
     this.excelPath = memory.get('excel.' + id) || '';
     this.sourceModes = {};
-    this.hiddenValues = new Set();
     this.pendingPassword = null;
     this.approvedSteps = new Set();
     this.litSteps = new Set();

@@ -217,6 +217,7 @@ python tools/build_package.py
 - Tên riêng của khối trong các câu thông báo nằm trong nháy kép, ví dụ khối "Điền", ở cả hai ngôn ngữ.
 - Trình duyệt kiểm tra trên trang thật (inspector) mở một lần rồi dùng lại, trước đây giữ ngôn ngữ lúc mở nên đổi sang tiếng Anh vẫn báo lỗi tiếng Việt. Giờ mỗi lần kiểm tra gửi kèm ngôn ngữ đang dùng.
 - Tên tiếng Anh của mẫu quy trình đổi từ `Read into Excel` thành `Get values into Excel`, khớp với "Lấy giá trị đưa vào Excel".
+- Trạng thái ẩn/hiện của ô giá trị khối `Fill` và ô tài khoản khối `Login` được lưu trong khối (`hide_value`, `hide_account`), nên mở lại tool vẫn ẩn. Khối đang ẩn có biểu tượng mắt gạch chéo nhỏ ở góc trên bên phải, và khối `Login` ẩn tài khoản trong sơ đồ.
 - Nhật ký các lần chạy và bảng Log (`system.log`) được lưu bằng ngôn ngữ lúc ghi. Khi xem lại, thông báo được dịch sang ngôn ngữ đang dùng (`i18n.retranslate`). Phần không phải câu của app, như tên phần tử hay giá trị, giữ nguyên.
 
 ## File chính

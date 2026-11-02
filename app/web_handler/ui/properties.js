@@ -86,12 +86,14 @@ function textPane(editor, step, key, settings) {
       editor.changedQuietly();
     },
   });
-  const memoKey = `${step.id}.${key}`;
   const hideable = (step.do === 'fill' && key === 'value') || key === 'account';
+  // Kept in the block, so the box is still hidden next time and the diagram can mark the block.
+  const hideKey = `hide_${key}`;
   const box = hideable
-    ? withEye(input, editor.hiddenValues.has(memoKey), hidden => {
-      if (hidden) editor.hiddenValues.add(memoKey);
-      else editor.hiddenValues.delete(memoKey);
+    ? withEye(input, Boolean(step[hideKey]), hidden => {
+      if (hidden) step[hideKey] = true;
+      else delete step[hideKey];
+      editor.changedQuietly();
     })
     : input;
   return el('div', null, box, settings.hint ? el('div.hint', { text: settings.hint }) : null);
