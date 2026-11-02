@@ -19,8 +19,9 @@ Nếu đang chạy dở, hàng đang làm được đánh dấu "Chưa rõ". Chr
 
 DỰNG QUY TRÌNH CỦA BẠN
 1. Bấm "Quy trình mới", chọn một mẫu có sẵn hoặc "Quy trình trống". Sau đó kéo khối từ cột bên trái, hoặc bấm "Ghi thao tác" để làm tay một lượt. Rê chuột lên khối để xem giải thích.
+   Để đăng nhập, dùng khối Đăng nhập: lưu mật khẩu ở mục Bí mật trước, rồi chọn nó trong khối.
 2. Chọn khối, rồi dán HTML của phần tử: F12, chuột phải vào phần tử, Copy, Copy outerHTML.
-3. Kéo chuột khoanh các khối cần lặp, bỏ qua phần đăng nhập, rồi bấm "Tạo vùng lặp".
+3. Để lặp các khối, bấm khối Vùng lặp ở cột trái rồi kéo khối vào đó. Hoặc kéo chuột khoanh các khối đã có, bỏ qua phần đăng nhập, rồi bấm "Tạo vùng lặp".
 4. Bấm "Chọn Excel", chọn dải hàng ở thanh dưới, bấm "Chạy thử 1 lần", rồi "Chạy".
    Ví dụ cột A chứa link, cột B chứa nội dung: khối Mở link chọn Excel cột A, khối Điền chọn Excel cột B.
 5. Muốn làm lại từ đầu, bấm "Xóa toàn bộ": xóa mọi khối, vùng lặp và cấu hình Excel của quy trình.
@@ -34,6 +35,10 @@ AN TOÀN DỮ LIỆU
 - Thư mục data chứa quy trình, ảnh chụp lỗi và phiên đăng nhập. Đừng gửi thư mục đó cho người khác.
 - Tool không vượt captcha hay MFA. Dùng khối "Làm tay" cho các bước đó.
 - Hãy chắc chắn quy định của hệ thống cho phép tự động hóa trước khi dùng.
+
+CHIA SẺ CHO NGƯỜI KHÁC
+Bấm đúp Build.bat trong thư mục mã nguồn. Lần đầu cần có mạng, Python 3 và Inno Setup 6.
+Gửi file WebHandler-Setup-<phiên bản>.exe vừa tạo. Người nhận chỉ cần chạy đúng một file đó.
 
 GỠ
 - Cài bằng bộ cài: gỡ Web Handler trong Settings, Apps. Bộ gỡ sẽ hỏi có xóa dữ liệu của bạn không.

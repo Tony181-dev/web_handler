@@ -20,7 +20,7 @@ function stopColumn(flow) {
   const loop = findLoop(flow);
   if (!loop) return '';
   for (const step of loop.steps) {
-    for (const key of ['url', 'value', 'equals', 'contains', 'url_contains', 'url_not_contains']) {
+    for (const key of ['url', 'account', 'value', 'equals', 'contains', 'url_contains', 'url_not_contains']) {
       const match = /\{\{\s*([A-Z]{1,3})\s*\}\}/.exec(step[key] || '');
       if (match) return match[1];
     }
@@ -41,6 +41,12 @@ function stepSummary(step) {
       if (source === 'excel') return t('Excel, column {name}', { name });
       return step.url || step.note || t('no link yet');
     }
+    case 'login': {
+      const [source, name] = sourceOf(step.account);
+      if (source === 'excel') return t('Excel, column {name}', { name });
+      if (source === 'text') return step.account || t('no account yet');
+      return name;
+    }
     case 'verify': return step.url_not_contains ? t('URL without {text}', { text: step.url_not_contains }) : step.url_contains ? t('URL with {text}', { text: step.url_contains }) : (target || t('no condition yet'));
     case 'manual_pause': return step.message || t('click Continue');
     case 'wait': return t('{seconds} s', { seconds: step.seconds });
@@ -52,6 +58,7 @@ function stepSummary(step) {
 function stepIsIncomplete(step) {
   const targetSteps = ['fill', 'click', 'select', 'check', 'read', 'wait_for'];
   if (step.do === 'goto' && !step.url) return true;
+  if (step.do === 'login' && !(step.account && step.password)) return true;
   if (targetSteps.includes(step.do) && !(step.target && step.target.primary)) return true;
   if ((step.do === 'fill' || step.do === 'select') && !step.value) return true;
   if (step.do === 'read' && !step.save_to_var && !step.save_to_column) return true;
@@ -344,6 +351,7 @@ function startPaletteDrag(event, editor, kind) {
   event.preventDefault();
   runDrag.editor = editor;
   const drop = position => {
+    if (kind === 'loop') { editor.addLoop(position.index); return; }
     const step = editor.makeStep(kind);
     const list = position.lane === 'loop' ? findLoop(editor.flow).steps : editor.flow.steps;
     list.splice(position.index, 0, step);
@@ -352,7 +360,7 @@ function startPaletteDrag(event, editor, kind) {
   };
   // A plain click appends the block, for people who prefer not to drag.
   drop.click = () => editor.addStep(kind);
-  runDrag(event, STEP_NAMES[kind], drop, null, null, true);
+  runDrag(event, STEP_NAMES[kind], drop, null, null, kind !== 'loop');
 }
 
 function startNodeDrag(event, editor, step, node) {

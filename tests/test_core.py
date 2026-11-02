@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 sys.path.insert(0, str(ROOT / "runtime" / "site"))
 
-from web_handler import excel, flow as flow_module, flow_templates, i18n, runner, templating, worker
+from web_handler import excel, flow as flow_module, flow_templates, i18n, runner, secret_store, templating, worker
 from web_handler.browser_errors import BrowserClosed, ElementError
 
 i18n.use("en")
@@ -272,6 +272,7 @@ class FakeDriver:
         self.values = values or {}
         self.current_url = "https://example.test/"
         self.notices = []
+        self.login_form_found = True
 
     def _record(self, name, target=None, value=None):
         selector = target.get("primary") if target else None
@@ -306,6 +307,13 @@ class FakeDriver:
 
     def wait_for(self, target, timeout):
         self._record("wait_for", target)
+
+    def login(self, account, password, selectors, timeout, navigation_timeout):
+        self.calls.append(("login", account, password, selectors))
+        problem = self.fail_on.get("login")
+        if problem:
+            raise ElementError(problem.format(password=password))
+        return self.login_form_found
 
     def url(self):
         return self.current_url
@@ -522,6 +530,30 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(outcome, "after_loop_failed")
         self.assertEqual(self.statuses(), {2: "OK"})
 
+    def test_block_delay_waits_after_the_block_and_counts_down(self):
+        control = ScriptedControl()
+        flow = {"steps": [
+            {"id": "s1", "do": "goto", "url": "https://example.test/", "delay_after": 2},
+            {"id": "s2", "do": "goto", "url": "https://example.test/next"},
+        ]}
+        outcome, _ = self.run_flow(flow, control=control)
+        self.assertEqual(outcome, "finished")
+        self.assertEqual(control.waited, [2])
+        self.assertIn({"type": "waiting", "step": "s1", "seconds": 2}, self.events)
+
+    def test_block_without_a_delay_does_not_wait(self):
+        control = ScriptedControl()
+        self.run_flow({"steps": [{"id": "s1", "do": "goto", "url": "https://example.test/"}]}, control=control)
+        self.assertEqual(control.waited, [])
+
+    def test_failed_block_skips_its_delay(self):
+        control = ScriptedControl()
+        driver = FakeDriver(fail_on={("goto", "https://example.test/"): "x"})
+        flow = {"steps": [{"id": "s1", "do": "goto", "url": "https://example.test/", "delay_after": 2}]}
+        outcome, _ = self.run_flow(flow, driver, control=control)
+        self.assertEqual(outcome, "failed")
+        self.assertEqual(control.waited, [])
+
     def test_wait_block_pauses_for_its_seconds_and_announces_them(self):
         control = ScriptedControl()
         outcome, _ = self.run_flow({"steps": [{"id": "s1", "do": "wait", "seconds": 1.5}]}, control=control)
@@ -540,6 +572,98 @@ class RunnerTests(unittest.TestCase):
         outcome, _ = self.run_flow(flow, control=control)
         self.assertEqual(outcome, "stopped")
         self.assertEqual(self.driver.calls, [])
+
+
+    SECRETS = {"me": "my-account", "pw": "p@ss{{A}}$1"}
+
+    def login_flow(self, **fields):
+        step = {"id": "s1", "do": "login", "account": "{{secret:me}}", "password": "{{secret:pw}}", **fields}
+        return {"steps": [step]}
+
+    def test_fills_in_the_rendered_account_and_password(self):
+        outcome, _ = self.run_flow(self.login_flow(), secret=self.SECRETS.get)
+        self.assertEqual(outcome, "finished")
+        self.assertEqual(self.driver.calls[0][:3], ("login", "my-account", "p@ss{{A}}$1"))
+
+    def test_passes_on_the_selectors_given(self):
+        self.run_flow(self.login_flow(account_selector="#a", submit_selector="#go"), secret=self.SECRETS.get)
+        self.assertEqual(self.driver.calls[0][3], {"account": "#a", "password": None, "submit": "#go"})
+
+    def test_page_without_a_form_counts_as_already_logged_in_with_a_warning(self):
+        driver = FakeDriver()
+        driver.login_form_found = False
+        outcome, _ = self.run_flow(self.login_flow(), driver, secret=self.SECRETS.get)
+        self.assertEqual(outcome, "finished")
+        self.assertTrue(any(event["type"] == "log" and event["level"] == "warn" and "already logged in" in event["text"] for event in self.events))
+
+    def test_failure_stops_the_run_and_never_shows_the_password(self):
+        driver = FakeDriver(fail_on={"login": "form still there, tried {password}"})
+        outcome, message = self.run_flow(self.login_flow(), driver, secret=self.SECRETS.get)
+        self.assertEqual(outcome, "failed")
+        self.assertNotIn(self.SECRETS["pw"], message)
+
+
+class LoginValidationTests(unittest.TestCase):
+    def errors_for(self, **fields):
+        step = {"id": "s1", "do": "login", **fields}
+        return [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
+
+    def test_both_fields_filled_passes(self):
+        self.assertEqual(self.errors_for(account="me@mail.com", password="{{secret:pw}}"), [])
+
+    def test_account_is_required(self):
+        self.assertEqual(self.errors_for(account="", password="{{secret:pw}}"), ["The Login block has no account."])
+
+    def test_password_is_required(self):
+        self.assertEqual(self.errors_for(account="me", password=""), ["The Login block has no password."])
+
+    def test_typed_password_is_refused_so_it_stays_out_of_the_flow_file(self):
+        for password in ("plain", "x{{secret:pw}}", "{{A}}"):
+            with self.subTest(password=password):
+                errors = self.errors_for(account="me", password=password)
+                self.assertTrue(any("must be a saved secret" in item for item in errors), errors)
+
+    def test_missing_secret_is_reported(self):
+        context = flow_module.CheckContext(secret_exists=lambda name: False)
+        step = {"id": "s1", "do": "login", "account": "me", "password": "{{secret:pw}}"}
+        errors = [item["message"] for item in flow_module.validate({"steps": [step]}, context).errors]
+        self.assertTrue(any("Secret pw" in item for item in errors), errors)
+
+    def test_account_from_excel_must_be_in_the_loop(self):
+        errors = self.errors_for(account="{{A}}", password="{{secret:pw}}")
+        self.assertTrue(any("Column A only works" in item for item in errors), errors)
+
+
+class SecretNameTests(unittest.TestCase):
+    def test_names_may_hold_special_characters(self):
+        for name in ("your_account", "me@mail.com", "my password!", "a.b/c:d", "T\u00e0i kho\u1ea3n"):
+            with self.subTest(name=name):
+                self.assertTrue(secret_store.valid_name(name))
+
+    def test_names_that_would_break_a_template_are_refused(self):
+        for name in ("", " x", "x ", "a{b", "a}b", "a\nb"):
+            with self.subTest(name=name):
+                self.assertFalse(secret_store.valid_name(name))
+
+    def test_special_characters_in_a_secret_value_are_filled_in_as_they_are(self):
+        value = "p@$$w0rd!#%^&*()_+-=[]{}|;:'\",.<>/?`~\\ {{A}} \\1 \u00e0"
+        context = templating.Context({"pw": value}.get)
+        self.assertEqual(templating.render("{{secret:pw}}", context), value)
+
+
+class BlockDelayValidationTests(unittest.TestCase):
+    def errors_for(self, **fields):
+        step = {"id": "s1", "do": "goto", "url": "https://example.test/", **fields}
+        return [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
+
+    def test_delay_is_optional_and_takes_a_positive_number(self):
+        self.assertEqual(self.errors_for(), [])
+        self.assertEqual(self.errors_for(delay_after=1.5), [])
+
+    def test_other_delays_are_refused(self):
+        for delay in (0, -1, "2", True):
+            with self.subTest(delay=delay):
+                self.assertEqual(len(self.errors_for(delay_after=delay)), 1)
 
 
 class WaitCommandTests(unittest.TestCase):

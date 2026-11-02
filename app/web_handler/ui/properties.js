@@ -153,8 +153,27 @@ function renderProperties(editor) {
     step.do === 'loop' ? null : el('button.btn.small.danger', { id: 'delete-step', text: t('Delete block'), onclick: () => editor.deleteSelection() })));
   const render = STEP_FORMS[step.do];
   if (render) render(panel, editor, step);
+  if (!['loop', 'wait'].includes(step.do)) panel.append(delayField(editor, step));
   panel.scrollTop = scroll;
 }
+
+// Collapsed until someone needs it, but a delay in use stays in sight.
+function delayField(editor, step) {
+  const input = el('input', {
+    type: 'number', id: 'delay-after', min: '0', step: 'any', value: step.delay_after || '',
+    oninput: () => {
+      const value = parseFloat(input.value);
+      if (value > 0) step.delay_after = value;
+      else delete step.delay_after;
+      editor.changedQuietly();
+    },
+  });
+  return el('details.delay-field', { id: 'delay-details', open: Boolean(step.delay_after) },
+    el('summary', { text: t('Delay') }),
+    field(t('Delay (seconds)'), input, t('Enter the time to wait before moving on to the next block. Leave empty for no delay.')));
+}
+
+const LOGIN_SELECTOR_LABELS = { account: 'Account field', password: 'Password field', submit: 'Login button' };
 
 const STEP_FORMS = {
   goto(panel, editor, step) {
@@ -162,6 +181,16 @@ const STEP_FORMS = {
       placeholder: 'https://...',
       hint: t('If part of the link changes with Excel, write it like this: https://site/{{A}}/edit.'),
     }));
+  },
+  login(panel, editor, step) {
+    panel.append(valueField(editor, step, 'account', t('Account')));
+    const [, secret] = sourceOf(step.password);
+    panel.append(field(t('Password'), namePane(editor, step, 'password', 'secret', secret, editor.secretNames),
+      t('Chosen from Secrets, so the password stays out of the flow file.')));
+    const finding = ['account', 'password', 'submit'].map(name => textField(editor, step, `${name}_selector`, t(LOGIN_SELECTOR_LABELS[name]), { mono: true }));
+    panel.append(el('details', null, el('summary', { text: t('Find the form by hand') }),
+      el('div.hint', { text: t('Leave empty and the tool finds the form by itself. Fill in only if it finds the wrong one.'), style: 'margin:6px 0' }),
+      finding));
   },
   fill(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -361,8 +390,10 @@ function targetEditor(editor, step) {
   };
   refreshBadge();
   holder.append(
-    field(t('How to find it'), selector),
-    el('div', { style: 'margin:-6px 0 10px' }, badge),
+    el('div.finder-box', { id: 'finder-box' },
+      field(t('How to find it'), selector),
+      el('div', null, badge),
+      editor.pastedInfo ? otherWays(editor, step, editor.pastedInfo) : null),
     verifyControls(editor, step, refreshBadge));
   return holder;
 }
@@ -393,22 +424,23 @@ function elementSummary(editor, step, info) {
   if (info.warnings && info.warnings.length) {
     box.append(el('ul.note-list', null, info.warnings.map(text => el('li', { text }))));
   }
-  if (info.match_count !== 1 && info.candidates && info.candidates.length > 1) {
-    box.append(el('div.hint', { text: t('Other ways to find it:'), style: 'margin:6px 0 4px' }));
-    for (const candidate of info.candidates) {
-      box.append(el('label.candidate' + (ensureTarget(step).primary === candidate.selector ? '.on' : ''), {
-        onclick: event => {
-          event.preventDefault();
-          const target = ensureTarget(step);
-          target.primary = candidate.selector;
-          target.fallbacks = info.candidates.filter(item => item.selector !== candidate.selector && (item.count === 1 || item.count === null)).map(item => item.selector).slice(0, 2);
-          target.verified = false;
-          editor.changed();
-        },
-      }, el('code', { text: candidate.selector }), candidate.count === null || candidate.count === undefined ? null : el('span.muted', { text: `${candidate.count}` })));
-    }
-  }
   return box;
+}
+
+function otherWays(editor, step, info) {
+  if (info.match_count === 1 || !info.candidates || info.candidates.length < 2) return null;
+  return el('div', { style: 'margin-top:10px' },
+    el('div.hint', { text: t('Other ways to find it:'), style: 'margin:0 0 4px' }),
+    info.candidates.map(candidate => el('label.candidate' + (ensureTarget(step).primary === candidate.selector ? '.on' : ''), {
+      onclick: event => {
+        event.preventDefault();
+        const target = ensureTarget(step);
+        target.primary = candidate.selector;
+        target.fallbacks = info.candidates.filter(item => item.selector !== candidate.selector && (item.count === 1 || item.count === null)).map(item => item.selector).slice(0, 2);
+        target.verified = false;
+        editor.changed();
+      },
+    }, el('code', { text: candidate.selector }), candidate.count === null || candidate.count === undefined ? null : el('span.muted', { text: `${candidate.count}` }))));
 }
 
 function pasteElement(editor, step) {
@@ -532,7 +564,7 @@ async function inspectAtBlock(editor, step, command) {
     renderCanvas(editor);
     return { error: t('Block {position} ({name}) is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[before[position].do] }) };
   }
-  const unapproved = before.filter(item => ['click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
+  const unapproved = before.filter(item => ['login', 'click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
   if (unapproved.length) {
     const names = unapproved.map(runningOrderLabel).join(', ');
     const message = t('To get to this block, the tool will really run the {count} block(s) before it, including: {names}. Blocks in the loop use the first Excel row. The block being checked is not carried out.', { count: before.length, names });

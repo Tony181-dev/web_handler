@@ -20,8 +20,9 @@ If a run is in progress, the row being worked on is marked "Unclear". Your own C
 
 BUILDING YOUR OWN FLOW
 1. Click "New flow" and pick a template or "Blank flow". Then drag blocks from the left column, or click "Record" to do the work once by hand. Point at a block to see what it does.
+   For logging in, use a Login block: save the password under Secrets first, then choose it in the block.
 2. Select a block and paste the HTML of the element: F12, right-click the element, Copy, Copy outerHTML.
-3. Drag a box around the blocks to repeat, leaving out the login, then click "Create loop".
+3. To repeat blocks, click the Loop block on the left and drag blocks into it. Or drag a box around existing blocks, leaving out the login, and click "Create loop".
 4. Click "Select Excel", choose the rows in the bar below, click "Run once", then "Run".
    For example, with links in column A and content in column B: choose Excel column A for the Open link block, and column B for the Fill block.
 5. To start over, click "Clear all": it deletes every block, the loop and the Excel setup of the flow.
@@ -35,6 +36,10 @@ KEEPING YOUR DATA SAFE
 - The data folder holds your flows, error screenshots and login sessions. Do not send that folder to anyone.
 - The tool does not get past captchas or MFA. Use a "Manual step" block for those.
 - Make sure the rules of the system you use allow automation before using this tool.
+
+SHARING IT WITH SOMEONE
+Double-click Build.bat in the source folder. It needs internet the first time, Python 3 and Inno Setup 6.
+Send the WebHandler-Setup-<version>.exe it creates. The other person only runs that one file.
 
 UNINSTALL
 - Installed with the installer: remove Web Handler in Settings, Apps. It asks whether to delete your data.

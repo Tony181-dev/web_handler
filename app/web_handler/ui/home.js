@@ -135,8 +135,8 @@ function openSecrets() {
       el('p.muted', { text: t('Values are kept in Windows Credential Manager and never shown again. The flow file holds only the name, for example {{secret:your_password}}.'), style: 'margin-bottom:12px' }),
       list,
       el('div.divider'),
-      el('div.field', null, el('label.field-label', { text: t('Name'), for: 'secret-name' }), nameInput),
-      el('div.field', null, el('label.field-label', { text: t('Value'), for: 'secret-value' }), valueInput),
+      el('div.field', null, el('label.field-label', { text: t('Name'), for: 'secret-name' }), nameInput, el('div.hint', { text: t('A name you choose, used to pick this secret in a block.') })),
+      el('div.field', null, el('label.field-label', { text: t('Value'), for: 'secret-value' }), valueInput, el('div.hint', { text: t('The real account or password. Any characters are allowed.') })),
       el('button.btn.primary', { id: 'secret-save', text: t('Save secret'), onclick: save })),
     actions: [{ label: t('Close'), id: 'close' }],
   });

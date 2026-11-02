@@ -200,11 +200,12 @@ def run_flow(job, commands):
             writer.close()
         journal.write(type="finish", outcome=outcome, message=message, result_file=result_file)
         journal.close()
+        # Reported first: closing a browser someone already closed can hang.
+        emit({
+            "type": "finished", "outcome": outcome, "message": message, "result_file": result_file,
+            "counts": instance.counts if instance else {},
+        })
         driver.close()
-    emit({
-        "type": "finished", "outcome": outcome, "message": message, "result_file": result_file,
-        "counts": instance.counts if instance else {},
-    })
     return 0
 
 

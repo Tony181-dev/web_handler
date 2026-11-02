@@ -155,9 +155,12 @@ class DemoTests(AppTestCase):
         self.page.wait_for_function("document.querySelector('#run-rows img.shot').naturalWidth > 0")
 
         # Retrying only touches the failed row.
+        first_run = self.page.url
         self.page.click("#run-retry")
         expect(self.page.locator("#confirm-total")).to_have_text("1")
         self.page.click("[data-action=confirm-run]")
+        self.page.wait_for_url(lambda url: url != first_run)
+        expect(self.page.locator("#run-stop")).to_have_count(0, timeout=60000)
         expect(self.page.locator("[data-count='Failed']")).to_have_text("1", timeout=60000)
         expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
 
@@ -282,7 +285,7 @@ class BuilderTests(AppTestCase):
         self.assert_buttons_are_english()
 
         self.new_flow()
-        kinds = ("goto", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause", "wait")
+        kinds = ("goto", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause", "wait", "login")
         for kind in kinds:
             self.page.locator(f".tool[data-kind={kind}]").click()
             self.assert_buttons_are_english()
@@ -350,7 +353,122 @@ class BuilderTests(AppTestCase):
         self.assertAlmostEqual(marker["y"], box["y"], delta=2)
         self.page.mouse.up()
         kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
-        self.assertEqual(kinds[-3:], ["verify", "wait", "loop"])
+        self.assertEqual(kinds[-3:], ["login", "wait", "loop"])
+
+    def test_login_block_asks_for_account_and_a_saved_password(self):
+        self.addCleanup(secret_store.delete_secret, "login_ui_test")
+        self.page.click("#nav-secrets")
+        self.page.fill("#secret-name", "login_ui_test")
+        self.page.fill("#secret-value", "x")
+        self.page.click("#secret-save")
+        expect(self.page.locator(".modal")).to_contain_text("login_ui_test")
+        self.page.click("[data-action=close]")
+        self.new_flow()
+        self.page.locator(".tool[data-kind=login]").click()
+        node = self.page.locator("#canvas .node").first
+        expect(node).to_have_class(re.compile("invalid"))
+        self.page.click("#run-full")
+        expect(self.page.locator("#issues")).to_contain_text("has no account")
+        expect(self.page.locator("#issues")).to_contain_text("has no password")
+        self.page.click("[data-action=close]")
+        self.page.locator("[data-field=account]").fill("me@mail.com")
+        self.assertEqual(self.page.locator("[data-field=password]").count(), 0)
+        self.page.select_option("[data-name=password]", "login_ui_test")
+        expect(node).not_to_have_class(re.compile("invalid"))
+        expect(node).to_contain_text("me@mail.com")
+        self.shot("login_block")
+        step = self.saved_flow()["steps"][0]
+        self.assertEqual((step["account"], step["password"]), ("me@mail.com", "{{secret:login_ui_test}}"))
+
+    def test_secret_name_and_value_accept_special_characters_and_can_be_deleted(self):
+        name = "me@mail.com / test"
+        value = "p@$$w0rd!#%^&*()_+-=[]{}|;:'\",.<>/?`~\\ {{A}} \u00e0"
+        self.page.click("#nav-secrets")
+        self.page.fill("#secret-name", name)
+        self.page.fill("#secret-value", value)
+        self.page.click("#secret-save")
+        row = self.page.locator(".modal tr", has_text=name)
+        expect(row).to_have_count(1)
+        self.assertEqual(secret_store.get_secret(name), value)
+        row.locator("button.danger").click()
+        expect(self.page.locator(".modal tr", has_text=name)).to_have_count(0)
+        self.assertIsNone(secret_store.get_secret(name))
+
+    def test_loop_block_in_the_palette_adds_an_empty_loop_about_one_row_high(self):
+        self.new_flow()
+        tool = self.page.locator(".tool[data-kind=loop]")
+        self.assertEqual(tool.evaluate("el => getComputedStyle(el).borderTopStyle"), "dashed")
+        self.page.locator(".tool[data-kind=goto]").click()
+        node_height = self.page.locator("#canvas .node").first.bounding_box()["height"]
+        tool.click()
+        frame = self.page.locator(".loop-frame")
+        expect(frame).to_have_count(1)
+        self.assertLessEqual(self.page.locator("[data-lane=loop]").bounding_box()["height"], node_height + 14)
+        flow = self.saved_flow()
+        self.assertEqual([step["do"] for step in flow["steps"]], ["goto", "loop"])
+        self.assertEqual(flow["steps"][1]["steps"], [])
+
+    def test_only_one_loop_block_can_be_added(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=loop]").click()
+        self.page.locator(".tool[data-kind=loop]").click()
+        expect(self.page.locator(".loop-frame")).to_have_count(1)
+        expect(self.page.locator(".toast.bad")).to_contain_text("only one loop")
+
+    def test_loop_block_can_be_dragged_to_a_position(self):
+        self.new_flow()
+        for _ in range(2):
+            self.page.locator(".tool[data-kind=wait]").click()
+        second = self.page.locator("#canvas .node").nth(1).bounding_box()
+        self.drag_until_over("loop", second["x"] + 5, second["y"] + 20)
+        self.page.mouse.up()
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds, ["wait", "loop", "wait"])
+
+    def test_empty_loop_takes_dragged_blocks_and_grows_when_full(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=loop]").click()
+        frame = self.page.locator(".loop-frame")
+        height = frame.bounding_box()["height"]
+        for count in range(1, 8):
+            self.drag_tool("wait", "[data-lane=loop]")
+            expect(self.page.locator("[data-lane=loop] .node")).to_have_count(count)
+        self.assertGreater(frame.bounding_box()["height"], height + 40)
+        loop = self.saved_flow()["steps"][0]
+        self.assertEqual(len(loop["steps"]), 7)
+        lane = self.page.locator("[data-lane=loop]").bounding_box()
+        for node in self.page.locator("[data-lane=loop] .node").all():
+            box = node.bounding_box()
+            self.assertLessEqual(box["y"] + box["height"], lane["y"] + lane["height"] + 1)
+
+    def drag_sidebar(self, offset):
+        handle = self.page.locator("#inspector-resize").bounding_box()
+        self.page.mouse.move(handle["x"] + handle["width"] / 2, 400)
+        self.page.mouse.down()
+        self.page.mouse.move(handle["x"] + handle["width"] / 2 + offset, 400, steps=5)
+        self.page.mouse.up()
+        return self.page.locator("#inspector").bounding_box()["width"]
+
+    def test_sidebar_resizes_from_its_size_up_to_forty_percent_more(self):
+        self.new_flow()
+        start = self.page.locator("#inspector").bounding_box()["width"]
+        self.assertAlmostEqual(self.drag_sidebar(60), start, delta=1, msg="Cannot go below its normal size")
+        self.assertAlmostEqual(self.drag_sidebar(-50), start + 50, delta=2)
+        self.assertAlmostEqual(self.drag_sidebar(-800), start * 1.4, delta=1)
+        self.shot("sidebar_wide")
+        canvas = self.page.locator("#canvas").bounding_box()
+        self.assertAlmostEqual(canvas["x"] + canvas["width"], self.page.locator("#inspector").bounding_box()["x"], delta=1)
+        self.page.reload()
+        expect(self.page.locator("#inspector")).to_be_visible()
+        self.assertAlmostEqual(self.page.locator("#inspector").bounding_box()["width"], start * 1.4, delta=1)
+        self.assertAlmostEqual(self.drag_sidebar(800), start, delta=1)
+
+    def test_sidebar_resizes_with_the_keyboard(self):
+        self.new_flow()
+        start = self.page.locator("#inspector").bounding_box()["width"]
+        self.page.locator("#inspector-resize").focus()
+        self.page.keyboard.press("ArrowLeft")
+        self.assertGreater(self.page.locator("#inspector").bounding_box()["width"], start)
 
     def test_secret_fields_show_example_names(self):
         self.page.click("#nav-secrets")
@@ -456,6 +574,8 @@ class BuilderTests(AppTestCase):
         self.page.fill("#secret-name", "ui_test")
         self.page.fill("#secret-value", "gia-tri-bi-mat")
         self.page.click("#secret-save")
+        # The name may be listed already from an earlier test, so wait for this save itself.
+        expect(self.page.locator(".toast")).to_contain_text("Saved")
         expect(self.page.locator(".modal table.data")).to_contain_text("ui_test")
         self.assertNotIn("gia-tri-bi-mat", self.page.content())
         self.assertEqual(secret_store.get_secret("ui_test"), "gia-tri-bi-mat")
@@ -698,10 +818,12 @@ class SystemLogTests(AppTestCase):
         self.page.click("#open-demo")
         expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
         button = self.page.locator(".log-toggle:visible").bounding_box()
+        opener = self.page.locator("#open-excel").bounding_box()
         excel = self.page.locator("#pick-excel").bounding_box()
-        self.assertLessEqual(button["y"] + button["height"], excel["y"])
+        self.assertLessEqual(button["y"] + button["height"], opener["y"])
+        self.assertLessEqual(opener["y"] + opener["height"], excel["y"])
         self.assertLess(abs(button["x"] - excel["x"]), 40)
-        self.assertLess(excel["y"] - (button["y"] + button["height"]), 40)
+        self.assertLess(excel["y"] - (opener["y"] + opener["height"]), 40)
         self.shot("log_button")
 
         self.open_log()
@@ -811,12 +933,13 @@ class SetupAndSecurityTests(AppTestCase):
         self.shot("template_login_excel")
         flow = self.saved_flow()
         self.assertEqual(flow["name"], "Login + Excel rows")
-        self.assertEqual([step["do"] for step in flow["steps"]], ["goto", "fill", "fill", "click", "verify", "loop"])
+        self.assertEqual([step["do"] for step in flow["steps"]], ["goto", "login", "loop"])
+        self.assertEqual(flow["steps"][1]["password"], "{{secret:your_password}}")
         self.assertEqual(flow["excel"]["required"], ["A", "B"])
         self.assertEqual([step["do"] for step in flow["steps"][-1]["steps"]], ["goto", "fill", "click"])
         # A blank block says what it is for, and its form opens without trouble.
-        expect(self.page.locator("#canvas .node").nth(1)).to_contain_text("Username field")
-        self.page.locator("#canvas .node").nth(1).click()
+        expect(self.page.locator("#canvas .node").nth(0)).to_contain_text("Login page link")
+        self.page.locator("#canvas .node").nth(3).click()
         expect(self.page.locator("#target-selector")).to_be_visible()
 
     def test_template_uses_the_typed_name(self):
@@ -878,6 +1001,161 @@ class WaitBlockTests(AppTestCase):
         expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=30000)
 
 
+class RunningFlowTests(AppTestCase):
+    def start_long_run(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.page.locator(".tool[data-kind=wait]").click()
+        self.page.fill("#wait-seconds", "300")
+        self.saved_flow()
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-flow .node[data-step=s2]")).to_contain_text("left", timeout=60000)
+
+    def test_leaving_a_running_flow_keeps_a_way_back_and_a_way_to_stop(self):
+        self.start_long_run()
+        run_url = self.page.url
+        expect(self.page.locator("#active-job")).to_be_hidden()
+        self.page.click("text=Back to flow")
+        expect(self.page.locator("#canvas")).to_be_visible()
+        expect(self.page.locator("#active-job")).to_be_visible(timeout=10000)
+        self.assert_buttons_are_english()
+
+        # Run does not just refuse: it offers both ways out.
+        self.page.click("#run-full")
+        self.page.click("[data-action=open-active]")
+        expect(self.page.locator("#run-headline")).to_be_visible()
+        self.assertEqual(self.page.url, run_url)
+
+        self.page.click(".brand")
+        self.page.click("#active-job")
+        self.page.click("[data-action=stop-active]")
+        expect(self.page.locator("#active-job")).to_be_hidden(timeout=30000)
+
+        self.new_flow("Sau khi dừng")
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.saved_flow()
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
+
+    def test_reloading_the_run_page_still_shows_the_run_and_stop_now_works(self):
+        self.start_long_run()
+        self.page.reload()
+        expect(self.page.locator("#run-flow")).to_be_visible()
+        self.page.click("#run-stop-now")
+        expect(self.page.locator("#run-headline")).to_have_text("Stopped as requested.", timeout=30000)
+
+
+class FinderAndExcelTests(AppTestCase):
+    def test_how_to_find_it_shares_a_box_with_the_other_ways(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=click]").click()
+        self.page.fill("#paste-element", '<button id="save" name="save" class="primary">Save</button>')
+        box = self.page.locator("#finder-box")
+        expect(box.locator("#target-selector")).to_be_visible()
+        expect(box.locator(".candidate").first).to_be_visible()
+        self.assertGreater(box.locator(".candidate").count(), 1)
+        self.shot("finder_box")
+        box.locator(".candidate").nth(1).click()
+        chosen = self.page.locator("#finder-box .candidate.on code").inner_text()
+        expect(self.page.locator("#target-selector")).to_have_value(chosen)
+
+    def test_open_excel_sits_under_the_log_button_and_opens_the_chosen_file(self):
+        self.new_flow()
+        button = self.page.locator("#open-excel")
+        expect(button).to_be_disabled()
+        self.page.click(".brand")
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        expect(button).to_be_enabled()
+        log = self.page.locator(".palette .log-toggle").bounding_box()
+        self.assertGreaterEqual(button.bounding_box()["y"], log["y"] + log["height"])
+        # Answered here, so that testing does not start Excel on this machine.
+        requests = []
+
+        def answer(route):
+            requests.append(route.request.post_data_json)
+            route.fulfill(json={"ok": True})
+
+        self.page.route("**/api/excel/open*", answer)
+        button.click()
+        expect(self.page.locator("#open-excel")).to_be_enabled()
+        self.page.wait_for_timeout(200)
+        self.assertEqual(len(requests), 1)
+        self.assertTrue(requests[0]["path"].endswith("example_data.xlsx"))
+
+    def test_only_an_existing_excel_file_can_be_opened(self):
+        for path in (r"C:\Windows\notepad.exe", str(Path(DATA) / "no_such_file.xlsx")):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{self.port}/api/excel/open?key={self.key}", method="POST",
+                data=json.dumps({"path": path}).encode("utf-8"), headers={"Content-Type": "application/json"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                NO_PROXY.open(request, timeout=10)
+            self.assertEqual(caught.exception.code, 404)
+
+
+class BrandTests(AppTestCase):
+    def test_author_is_shown_under_the_name(self):
+        name = self.page.locator(".brand-name")
+        author = self.page.locator("#brand-author")
+        expect(author).to_have_text("author: Hoang Nguyen")
+        self.assertGreaterEqual(author.bounding_box()["y"], name.bounding_box()["y"] + name.bounding_box()["height"] - 1)
+        self.assertAlmostEqual(author.bounding_box()["x"], name.bounding_box()["x"], delta=1)
+
+
+class BlockDelayTests(AppTestCase):
+    def test_every_action_block_has_a_collapsed_empty_delay_at_the_end(self):
+        self.new_flow()
+        for kind in ("goto", "login", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+            details = self.page.locator("#delay-details")
+            expect(details).to_be_visible()
+            self.assertIsNone(details.get_attribute("open"), kind)
+            self.assertTrue(details.evaluate("el => el === el.parentElement.lastElementChild"), kind)
+            expect(self.page.locator("#delay-after")).to_be_hidden()
+            self.assertNotIn("delay_after", self.saved_flow()["steps"][-1])
+
+    def test_wait_and_loop_have_no_delay(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=wait]").click()
+        expect(self.page.locator("#wait-seconds")).to_be_visible()
+        expect(self.page.locator("#delay-details")).to_have_count(0)
+        self.page.locator(".tool[data-kind=loop]").click()
+        expect(self.page.locator("#loop-source")).to_be_visible()
+        expect(self.page.locator("#delay-details")).to_have_count(0)
+
+    def test_delay_is_saved_stays_open_when_set_and_can_be_cleared(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("#delay-details summary").click()
+        expect(self.page.locator("#delay-details")).to_contain_text("next block")
+        self.shot("delay_field")
+        self.page.fill("#delay-after", "1.5")
+        self.assertEqual(self.saved_flow()["steps"][0]["delay_after"], 1.5)
+        self.page.reload()
+        self.page.locator("#canvas .node").first.click()
+        expect(self.page.locator("#delay-after")).to_be_visible()
+        expect(self.page.locator("#delay-after")).to_have_value("1.5")
+        self.page.fill("#delay-after", "")
+        self.assertNotIn("delay_after", self.saved_flow()["steps"][0])
+
+    def test_run_counts_down_the_delay_on_its_block(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.page.locator("#delay-details summary").click()
+        self.page.fill("#delay-after", "3")
+        self.saved_flow()
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-flow .node[data-step=s1]")).to_contain_text("left", timeout=60000)
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=30000)
+
+
 class ToolHelpTests(AppTestCase):
     def test_hovering_a_block_explains_it_and_leaving_removes_it(self):
         self.new_flow()
@@ -885,7 +1163,7 @@ class ToolHelpTests(AppTestCase):
         expect(help_box).to_have_count(0)
         self.page.locator(".tool[data-kind=fill]").hover()
         expect(help_box).to_be_visible()
-        expect(help_box).to_contain_text("Types a value")
+        expect(help_box).to_contain_text("Fills a value")
         self.shot("tool_help")
         self.page.locator(".tool[data-kind=wait]").hover()
         expect(help_box).to_have_count(1)
@@ -978,13 +1256,13 @@ class LanguageTests(AppTestCase):
         check("builder")
         self.page.locator(".tool[data-kind=wait_for]").hover()
         self.shot(f"builder_{self.page.locator('html').get_attribute('lang')}")
-        self.page.locator("#canvas .node").nth(1).click()
+        self.page.locator("#canvas .node").nth(3).click()
         check("fill panel")
         for tab in ("element", "page", "live"):
             self.page.click(f"[data-tab={tab}]")
             check(f"tab {tab}")
         self.page.click("[data-tab=element]")
-        for kind in ("goto", "click", "select", "check", "read", "wait_for", "wait", "verify", "manual_pause"):
+        for kind in ("goto", "login", "click", "select", "check", "read", "wait_for", "wait", "verify", "manual_pause"):
             self.page.locator(f".tool[data-kind={kind}]").click()
             check(f"{kind} panel")
             # Pressing a block hides its help until the pointer comes back.
@@ -1026,6 +1304,10 @@ class LanguageTests(AppTestCase):
 
     def test_vietnamese_covers_every_screen(self):
         expect(self.page.locator("#new-flow")).to_be_visible()
+        # Lines already in the log stay in the language they were written in.
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/log?key={self.key}", method="DELETE")
+        with NO_PROXY.open(request, timeout=10):
+            pass
         self.choose("vi")
         expect(self.page.locator("#new-flow")).to_have_text(self.vi["+ New flow"])
         self.walk_screens(self.assert_all_vietnamese)

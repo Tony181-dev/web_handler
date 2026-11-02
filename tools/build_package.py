@@ -43,11 +43,28 @@ def download_wheels(destination):
     )
 
 
+def playwright_site():
+    """Playwright for downloading Chromium: the app's own copy, or a private one on a fresh checkout."""
+    site = ROOT / "runtime" / "site"
+    if (site / "playwright").is_dir():
+        return site
+    tools = CACHE_DIR / "tools"
+    if not (tools / "playwright").is_dir():
+        subprocess.run(
+            [
+                sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+                "--target", str(tools), "-r", str(REQUIREMENTS),
+            ],
+            check=True,
+        )
+    return tools
+
+
 def chromium_zip(destination):
     """Download Chromium with the bundled Playwright, once, and pack only what is needed."""
     browsers = CACHE_DIR / "browsers"
     env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(browsers))
-    env["PYTHONPATH"] = str(ROOT / "runtime" / "site")
+    env["PYTHONPATH"] = str(playwright_site())
     subprocess.run([sys.executable, "-m", "playwright", "install", "--no-shell", "chromium"], check=True, env=env)
     folders = sorted(browsers.glob("chromium-*"))
     if not folders:
@@ -107,7 +124,10 @@ def build(with_chromium, with_installer):
         raise SystemExit("The package must be built on Windows.")
     compiler = find_inno_setup() if with_installer else None
     if with_installer and compiler is None:
-        raise SystemExit("Inno Setup 6 was not found. Install it, or use --no-installer.")
+        raise SystemExit(
+            "Inno Setup 6 was not found. Install it from https://jrsoftware.org/isdl.php, or use --no-installer."
+        )
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     build_probe.CACHE_DIR = CACHE_DIR
     archive = build_probe.download_python()

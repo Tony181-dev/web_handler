@@ -9,6 +9,17 @@ from .i18n import t
 
 CLOSED_HINTS = ("has been closed", "Target closed", "Browser closed", "Connection closed")
 TRIAL_TIMEOUT_MS = 3000
+LOGIN_FORM_WAIT_SECONDS = 5
+# The nearest visible text box before the password field, in the same form if it has one.
+FIND_ACCOUNT_FIELD = """password => {
+    const boxes = [...(password.form || document).querySelectorAll(
+        'input:not([type]), input[type=text], input[type=email], input[type=tel]'
+    )].filter(box => box.offsetParent !== null && (box.compareDocumentPosition(password) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return boxes[boxes.length - 1] || null;
+}"""
+FIND_SUBMIT_BUTTON = """password => [...(password.form || document).querySelectorAll(
+    'button[type=submit], input[type=submit], button:not([type])'
+)].find(button => button.offsetParent !== null) || null"""
 FILLABLE = (
     "textarea, [contenteditable], input:not([type=submit], [type=button], [type=checkbox], "
     "[type=radio], [type=file], [type=image], [type=reset])"
@@ -203,6 +214,56 @@ class ChromeDriver:
     def wait_for(self, target, timeout):
         self._guard(lambda: self._resolve(target, timeout).wait_for(state="visible", timeout=timeout * 1000))
 
+    def _visible_count(self, locator):
+        try:
+            return locator.count()
+        except Exception as error:
+            # A page in the middle of loading cannot answer yet.
+            if self._closed(error):
+                raise
+            return 1
+
+    def login(self, account, password, selectors, timeout, navigation_timeout):
+        """Fill in a login form and send it. Returns False if the page has no such form."""
+
+        def action():
+            password_field = self.page.locator(selectors["password"] or "input[type=password]:visible")
+            deadline = time.monotonic() + LOGIN_FORM_WAIT_SECONDS
+            count = password_field.count()
+            while count == 0 and time.monotonic() < deadline:
+                self.page.wait_for_timeout(100)
+                count = password_field.count()
+            if count == 0:
+                return False
+            if count > 1:
+                raise ElementError(t("The page has {count} password fields, so the tool does not guess. Fill in the block's fields for finding them.", count=count))
+            if selectors["account"]:
+                account_field = self.page.locator(selectors["account"])
+            else:
+                account_field = password_field.evaluate_handle(FIND_ACCOUNT_FIELD).as_element()
+                if account_field is None:
+                    raise ElementError(t("No account field was found before the password field. Fill in the block's fields for finding them."))
+            account_field.fill(account, timeout=timeout * 1000)
+            password_field.fill(password, timeout=timeout * 1000)
+            if selectors["submit"]:
+                self.page.locator(selectors["submit"]).click(timeout=timeout * 1000)
+            else:
+                button = password_field.evaluate_handle(FIND_SUBMIT_BUTTON).as_element()
+                if button is not None:
+                    button.click(timeout=timeout * 1000)
+                else:
+                    password_field.press("Enter", timeout=timeout * 1000)
+            # The form going away is what shows it worked, on a new page or the same one.
+            deadline = time.monotonic() + timeout
+            while self._visible_count(password_field) > 0:
+                if time.monotonic() >= deadline:
+                    raise ElementError(t("The login form is still there after {seconds} s. Check the account and password.", seconds=timeout))
+                self.page.wait_for_timeout(200)
+            self.page.wait_for_load_state("load", timeout=navigation_timeout * 1000)
+            return True
+
+        return self._guard(action)
+
     def url(self):
         return self._guard(lambda: self.page.url)
 
@@ -212,6 +273,9 @@ class ChromeDriver:
 
     def idle(self, milliseconds):
         self._guard(lambda: self.page.wait_for_timeout(milliseconds))
+        # Waiting alone does not notice a window someone closed, and the run would wait on forever.
+        if not self.is_open():
+            raise BrowserClosed()
 
     # Inspecting pages
 

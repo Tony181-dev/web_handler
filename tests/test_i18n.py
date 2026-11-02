@@ -177,10 +177,10 @@ class WhatPeopleSeeTests(unittest.TestCase):
         english = flow_templates.build("login_excel")
         i18n.use("vi")
         vietnamese = flow_templates.build("login_excel")
-        self.assertEqual(english["steps"][1]["note"], "Username field")
-        self.assertEqual(vietnamese["steps"][1]["note"], "Ô tài khoản")
+        self.assertEqual(english["steps"][0]["note"], "Login page link")
+        self.assertEqual(vietnamese["steps"][0]["note"], "Link trang đăng nhập")
         # Secret names are identifiers, the same in both languages.
-        self.assertEqual(english["steps"][1]["value"], vietnamese["steps"][1]["value"])
+        self.assertEqual(english["steps"][1]["password"], vietnamese["steps"][1]["password"])
 
     def test_old_journals_with_vietnamese_statuses_still_load(self):
         with tempfile.TemporaryDirectory() as folder:

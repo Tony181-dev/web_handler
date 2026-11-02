@@ -137,6 +137,11 @@ class Runner:
             status = self.driver.goto(render("url"), self.navigation_timeout)
             if status and status >= 400:
                 self.emit_log("warn", t("The page returned HTTP {status}.", status=status))
+        elif kind == "login":
+            selectors = {name: step.get(f"{name}_selector") or None for name in ("account", "password", "submit")}
+            found = self.driver.login(render("account"), render("password"), selectors, self.step_timeout, self.navigation_timeout)
+            if not found:
+                self.emit_log("warn", t("There is no login form on this page, so the block assumes you are already logged in."))
         elif kind == "fill":
             self.driver.fill(target, render("value"), self.step_timeout)
         elif kind == "click":
@@ -153,9 +158,7 @@ class Runner:
         elif kind == "wait_for":
             self.driver.wait_for(target, self.step_timeout)
         elif kind == "wait":
-            self.emit({"type": "waiting", "step": step.get("id"), "seconds": step["seconds"]})
-            if not self.control.wait_seconds(self.driver, step["seconds"]):
-                raise RunStopped()
+            self.hold(step, step["seconds"])
         elif kind == "verify":
             self.verify(step, render)
         elif kind == "manual_pause":
@@ -164,6 +167,13 @@ class Runner:
             raise StepError(t("Unknown block type {kind}.", kind=repr(kind)))
         for fallback in self.driver.take_fallback_notices():
             self.emit_log("warn", t("Using a fallback way to find the element: {fallback}", fallback=fallback))
+        if step.get("delay_after"):
+            self.hold(step, step["delay_after"])
+
+    def hold(self, step, seconds):
+        self.emit({"type": "waiting", "step": step.get("id"), "seconds": seconds})
+        if not self.control.wait_seconds(self.driver, seconds):
+            raise RunStopped()
 
     def store_read(self, step, value):
         if step.get("save_to_var"):

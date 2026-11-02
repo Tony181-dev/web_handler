@@ -381,6 +381,62 @@ class DemoFlowTests(IntegrationBase):
         self.assertIn(6, self.statuses(events))
 
 
+class LoginBlockTests(IntegrationBase):
+    def login_flow(self, password="{{secret:demo_password}}", **fields):
+        return {
+            "name": "t", "settings": {"step_timeout_seconds": 3, "navigation_timeout_seconds": 20},
+            "steps": [
+                {"id": "a", "do": "goto", "url": f"{self.base}/demo/login"},
+                {"id": "b", "do": "login", "account": "{{secret:demo_user}}", "password": password, **fields},
+                {"id": "c", "do": "verify", "url_contains": "/demo/items"},
+            ],
+        }
+
+    def test_finds_the_form_by_itself_and_logs_in(self):
+        events, _ = self.run_job(self.login_flow())
+        self.assertEqual(events[-1]["outcome"], "finished", events[-1])
+        self.assertEqual(SITE.login_attempts, 1)
+
+    def test_selectors_can_be_given_by_hand(self):
+        flow = self.login_flow(account_selector="#user", password_selector="#password", submit_selector="input.login_button")
+        events, _ = self.run_job(flow)
+        self.assertEqual(events[-1]["outcome"], "finished", events[-1])
+
+    def test_wrong_password_fails_and_the_password_stays_hidden(self):
+        secret_store.set_secret("wrong_password", "not-the-password")
+        self.addCleanup(secret_store.delete_secret, "wrong_password")
+        events, _ = self.run_job(self.login_flow(password="{{secret:wrong_password}}"))
+        self.assertEqual(events[-1]["outcome"], "failed")
+        self.assertIn("login form is still there", events[-1]["message"])
+        self.assertNotIn("not-the-password", json.dumps(events, ensure_ascii=False))
+
+    def test_when_already_logged_in_the_block_moves_on(self):
+        flow = self.login_flow()
+        flow["steps"] += [
+            {"id": "d", "do": "goto", "url": f"{self.base}/demo/items"},
+            {"id": "e", "do": "login", "account": "{{secret:demo_user}}", "password": "{{secret:demo_password}}"},
+            {"id": "f", "do": "verify", "url_contains": "/demo/items"},
+        ]
+        events, _ = self.run_job(flow)
+        self.assertEqual(events[-1]["outcome"], "finished", events[-1])
+        self.assertEqual(SITE.login_attempts, 1)
+        self.assertTrue(any("already logged in" in event.get("text", "") for event in events))
+
+    def test_special_characters_in_a_secret_reach_the_page_unchanged(self):
+        value = "p@$$w0rd!#%^&*()_+-=[]{}|;:'\",.<>/?`~\\ {{A}} \\1 \u00e0"
+        secret_store.set_secret("me@mail.com / test", value)
+        self.addCleanup(secret_store.delete_secret, "me@mail.com / test")
+        flow = self.login_flow()
+        flow["steps"] += [
+            {"id": "d", "do": "goto", "url": f"{self.base}/demo/item/2/edit"},
+            {"id": "e", "do": "fill", "target": {"primary": "#summary", "fallbacks": [], "frames": [], "verified": True}, "value": "{{secret:me@mail.com / test}}"},
+            {"id": "f", "do": "click", "target": {"primary": "input[name=\"SUBMIT\"]", "fallbacks": [], "frames": [], "verified": True}, "wait_navigation": True},
+        ]
+        events, _ = self.run_job(flow)
+        self.assertEqual(events[-1]["outcome"], "finished", events[-1])
+        self.assertEqual(SITE.items[2]["summary"], value)
+
+
 class ElementTests(IntegrationBase):
     def login_steps(self):
         flow, _ = self.demo_files()

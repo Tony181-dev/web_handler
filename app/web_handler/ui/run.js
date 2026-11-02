@@ -6,6 +6,11 @@ async function startRunFlow(editor, mode, options) {
 }
 
 async function runWithConfirmation(flowId, excelPath, mode, options) {
+  await refreshActiveJob();
+  if (activeJob) {
+    openActiveJobBox();
+    return;
+  }
   let check;
   try {
     check = await api('POST', '/api/preflight', {
@@ -117,6 +122,7 @@ async function renderRun(runId) {
         el('h1', { id: 'run-headline', text: headline }),
         el('span.spacer'),
         !finished ? el('button.btn.danger', { id: 'run-stop', text: t('Stop after this row'), onclick: () => command('stop') }) : null,
+        !finished ? el('button.btn.danger', { id: 'run-stop-now', text: t('Stop now'), onclick: stopActiveJob }) : null,
         el('a.btn', { href: '#/flow/' + summary.flow_id, text: t('Back to flow') })),
       el('p.muted', { text: summary.flow_name, style: 'margin:-10px 0 14px' }),
       state.paused ? el('div.pause-box', { id: 'pause-box' },

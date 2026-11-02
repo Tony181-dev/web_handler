@@ -15,6 +15,9 @@ from .workers import WorkerSession
 
 # Windows ends a closing console's processes after 5 seconds.
 SHUTDOWN_GRACE_SECONDS = 4
+STOP_NOW_GRACE_SECONDS = 3
+# A worker that has reported its end but cannot close its browser must not block the next run.
+WORKER_EXIT_SECONDS = 10
 
 
 class EventLog:
@@ -52,6 +55,7 @@ class Run:
         self.log = EventLog()
         self.session = None
         self.state = "running"
+        self.stopped_now = False
         self.started_at = datetime.now().isoformat(timespec="seconds")
 
     @property
@@ -119,7 +123,16 @@ class JobManager:
         self.recording = None
         self.recording_log = None
 
+    def _let_finished_run_close(self):
+        run = self.active
+        if run is None or run.session is None or run.state == "running" or not run.session.alive():
+            return
+        if not run.session.wait(WORKER_EXIT_SECONDS):
+            run.session.kill()
+            run.session.wait(STOP_NOW_GRACE_SECONDS)
+
     def browser_in_use(self):
+        self._let_finished_run_close()
         if self.active is not None and self.active.session and self.active.session.alive():
             return t("A flow is running.")
         if self.recording is not None and self.recording.alive():
@@ -164,10 +177,17 @@ class JobManager:
         if event.get("type") == "finished":
             run.state = event.get("outcome") or "finished"
             run.save_meta({"outcome": run.state, "result_file": event.get("result_file"), "message": event.get("message")})
+            timer = threading.Timer(WORKER_EXIT_SECONDS, run.session.kill)
+            timer.daemon = True
+            timer.start()
         run.log.add(event)
 
     def _on_run_exit(self, run, code):
-        if run.state == "running":
+        if run.state == "running" and run.stopped_now:
+            run.state = "stopped"
+            run.save_meta({"outcome": "stopped"})
+            run.log.add({"type": "finished", "outcome": "stopped", "message": ""})
+        elif run.state == "running":
             run.state = "crashed"
             tail = "\n".join(run.session.output_tail[-5:])
             event = {
@@ -178,6 +198,33 @@ class JobManager:
             self.log.add("error", event["message"])
             run.log.add(event)
         run.log.close()
+
+    def active_job(self):
+        """What is using the browser now, so a page can always lead back to it or stop it."""
+        with self.lock:
+            run = self.active
+            if run is not None and run.session is not None and run.session.alive() and run.state == "running":
+                return {"kind": "run", "run_id": run.run_id, "flow_id": run.flow_id, "flow_name": run.flow_name}
+            if self.recording is not None and self.recording.alive():
+                return {"kind": "recording"}
+            return None
+
+    def stop_active(self):
+        """Stop whatever is running, now. It gets a moment to save, and is ended if that is not enough."""
+        with self.lock:
+            run = self.active
+            session = run.session if run is not None and run.session is not None and run.session.alive() else None
+            if session is not None:
+                run.stopped_now = True
+            elif self.recording is not None and self.recording.alive():
+                session = self.recording
+        if session is None:
+            return
+        session.send({"cmd": "cancel"})
+        session.send({"cmd": "stop"})
+        if not session.wait(STOP_NOW_GRACE_SECONDS):
+            session.kill()
+            session.wait(STOP_NOW_GRACE_SECONDS)
 
     def command(self, run_id, command):
         run = self.runs.get(run_id)

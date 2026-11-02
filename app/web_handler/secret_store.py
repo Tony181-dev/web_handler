@@ -26,14 +26,15 @@ def _write_names(values):
 
 
 def valid_name(name):
-    return bool(name) and name.replace("_", "").replace("-", "").isalnum()
+    """Any characters, except what would break the {{secret:name}} template around them."""
+    return bool(name) and name == name.strip() and name.isprintable() and not set(name) & set("{}")
 
 
 def set_secret(name, value):
     import keyring
 
     if not valid_name(name):
-        raise ValueError(t("A secret name can only hold letters, digits, dashes and underscores."))
+        raise ValueError(t("A secret name cannot be empty, start or end with a space, or hold { or }."))
     keyring.set_password(SERVICE_PREFIX + name, ACCOUNT, value)
     _write_names(set(names()) | {name})
 

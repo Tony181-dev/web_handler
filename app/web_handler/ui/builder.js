@@ -1,5 +1,9 @@
 'use strict';
 
+const INSPECTOR_MIN_WIDTH = 320;
+const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
+const INSPECTOR_KEY_STEP = 16;
+
 class FlowEditor {
   constructor(id, flow) {
     this.id = id;
@@ -77,6 +81,7 @@ class FlowEditor {
     if (kind === 'click') step.wait_navigation = false;
     if (kind === 'check') step.checked = true;
     if (kind === 'goto') step.url = '';
+    if (kind === 'login') { step.account = ''; step.password = ''; }
     if (kind === 'verify') { step.target = { primary: '', fallbacks: [], frames: [], verified: false }; step.equals = ''; }
     if (kind === 'manual_pause') step.message = '';
     if (kind === 'wait') step.seconds = DEFAULT_WAIT_SECONDS;
@@ -84,7 +89,22 @@ class FlowEditor {
     return step;
   }
 
+  addLoop(index = this.flow.steps.length) {
+    const problem = findLoop(this.flow) ? t('A flow can have only one loop.') : '';
+    if (problem) { toast(problem, 'bad'); return; }
+    const loop = {
+      id: nextStepId(this.flow), do: 'loop',
+      source: this.excelPath || this.flow.excel ? 'excel' : 'count',
+      count: 1, steps: [],
+    };
+    this.flow.steps.splice(index, 0, loop);
+    if (loop.source === 'excel') this.ensureExcelSettings();
+    this.select(loop.id);
+    this.changed();
+  }
+
   addStep(kind) {
+    if (kind === 'loop') { this.addLoop(); return; }
     const step = this.makeStep(kind);
     this.flow.steps.push(step);
     this.select(step.id);
@@ -207,6 +227,7 @@ class FlowEditor {
     this.renderInspector();
     this.renderRunbar();
     this.clearNode.disabled = this.isEmpty();
+    this.openExcelNode.disabled = !this.excelPath;
   }
 
   renderInspector() {
@@ -302,6 +323,38 @@ class FlowEditor {
   }
 }
 
+// The side panel can grow from its normal size, up to 40% wider. The width is a per-browser convenience.
+function inspectorResizer(builder) {
+  let width = 0;
+  const setWidth = wanted => {
+    width = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, wanted));
+    builder.style.setProperty('--inspector-width', `${width}px`);
+    memory.set('inspector.width', String(width));
+  };
+  setWidth(parseFloat(memory.get('inspector.width')) || INSPECTOR_MIN_WIDTH);
+  const handle = el('div.inspector-resize', {
+    id: 'inspector-resize', role: 'separator', 'aria-orientation': 'vertical', tabindex: '0',
+    'aria-label': t('Resize the side panel'),
+    onkeydown: event => {
+      if (event.key === 'ArrowLeft') setWidth(width + INSPECTOR_KEY_STEP);
+      else if (event.key === 'ArrowRight') setWidth(width - INSPECTOR_KEY_STEP);
+    },
+  });
+  handle.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+    const move = moveEvent => setWidth(startWidth + startX - moveEvent.clientX);
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  });
+  return handle;
+}
+
 async function renderBuilder(id) {
   const view = document.getElementById('view');
   const { flow } = await api('GET', '/api/flows/' + id);
@@ -327,6 +380,10 @@ async function renderBuilder(id) {
   editor.runbarNode = el('div.runbar', { id: 'runbar' });
   editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: t('Clear all'), style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
 
+  editor.openExcelNode = attachHelp(el('button.btn', {
+    id: 'open-excel', text: t('Open Excel'),
+    onclick: () => api('POST', '/api/excel/open', { path: editor.excelPath }).catch(showError),
+  }), t('Opens the chosen Excel file in Windows.'));
   attachHelp(editor.clearNode, t('Deletes every block, the loop and the Excel setup of this flow.'));
 
   const palette = el('nav.palette', { 'aria-label': t('Block types') },
@@ -346,9 +403,11 @@ async function renderBuilder(id) {
     el('div', { style: 'height:10px' }),
     attachHelp(el('button.btn.record', { id: 'start-record', text: t('● Record'), style: 'width:100%', onclick: () => startRecording(editor) }), t('Do the work once by hand in Chrome, and the tool turns it into blocks.')),
     editor.clearNode,
-    logButton());
+    el('div.palette-foot', null, logButton(), editor.openExcelNode));
 
-  view.replaceChildren(el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode));
+  const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
+  builder.append(inspectorResizer(builder));
+  view.replaceChildren(builder);
 
   document.addEventListener('keydown', editor.onKey);
   window.leaveView = () => {

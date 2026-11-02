@@ -6,7 +6,7 @@ import mimetypes
 import os
 from pathlib import Path
 import secrets
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, i18n, paths
 from .i18n import t
@@ -17,6 +17,7 @@ from .system_log import SystemLog
 
 DEMO_FLOW_ID = "demo"
 PING_ATTEMPTS = 3
+EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xls")
 MAX_BODY_BYTES = 30 * 1024 * 1024
 SERVER_FILE = "server.json"
 
@@ -101,6 +102,13 @@ class App:
         return {"id": DEMO_FLOW_ID, "excel_path": str(excel_path), "url": f"{self.base_url}/demo/"}
 
     # Excel
+
+    def open_excel(self, path):
+        """Open the file in Excel. Only Excel files, as this asks Windows to run whatever opens them."""
+        file = Path(path or "")
+        if file.suffix.lower() not in EXCEL_SUFFIXES or not file.is_file():
+            raise ApiError(t("There is no such Excel file."), 404)
+        os.startfile(file)
 
     def excel_info(self, path):
         from . import excel
@@ -379,6 +387,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_flows(method, rest)
         if head == "demo" and method == "POST":
             return self.send_json(app.make_demo())
+        if head == "active":
+            return self.api_active(method, rest)
+        if head == "excel" and rest == ["open"] and method == "POST":
+            app.open_excel(self.read_json().get("path"))
+            return self.send_json({"ok": True})
         if head == "excel" and method == "POST":
             return self.send_json(app.excel_info(self.read_json().get("path", "")))
         if head == "html" and method == "POST":
@@ -393,6 +406,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_inspect(method, rest)
         if head == "record":
             return self.api_record(method, rest, query)
+        raise ApiError(t("Not found."), 404)
+
+    def api_active(self, method, rest):
+        jobs = self.app.jobs
+        if method == "GET" and not rest:
+            return self.send_json({"job": jobs.active_job()})
+        if method == "POST" and rest == ["stop"]:
+            jobs.stop_active()
+            return self.send_json({"ok": True})
         raise ApiError(t("Not found."), 404)
 
     def api_language(self, method):
@@ -473,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(str(error)) from error
             return self.send_json({"ok": True})
         if method == "DELETE" and len(rest) == 1:
-            secret_store.delete_secret(rest[0])
+            secret_store.delete_secret(unquote(rest[0]))
             return self.send_json({"ok": True})
         raise ApiError(t("Not found."), 404)
 

@@ -63,7 +63,7 @@ class WorkerSession:
         return self.finished.wait(timeout)
 
     def kill(self):
-        if self.process is None:
+        if not self.alive():
             return
         subprocess.run(
             ["taskkill", "/T", "/F", "/PID", str(self.process.pid)],

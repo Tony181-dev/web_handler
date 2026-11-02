@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import uuid
 
 from . import paths, templating
@@ -15,6 +16,7 @@ DEFAULT_SETTINGS = {
 }
 STEP_NAMES = {
     "goto": "Open link",
+    "login": "Login",
     "fill": "Fill",
     "click": "Click",
     "select": "Select",
@@ -27,7 +29,8 @@ STEP_NAMES = {
     "manual_pause": "Manual step",
 }
 TARGET_STEPS = {"fill", "click", "select", "check", "read", "wait_for"}
-TEMPLATE_FIELDS = ("url", "value", "equals", "contains", "url_contains", "url_not_contains")
+TEMPLATE_FIELDS = ("url", "account", "password", "value", "equals", "contains", "url_contains", "url_not_contains")
+WHOLE_SECRET = re.compile(r"^\{\{\s*secret:[^{}]+\}\}$")
 
 
 def new_flow(name):
@@ -149,10 +152,21 @@ def _check_step_fields(step, issues):
         issues.error(t("Unknown block type {kind}.", kind=repr(kind)), step)
         return
     name = t(STEP_NAMES[kind])
+    delay = step.get("delay_after")
+    if delay is not None and (isinstance(delay, bool) or not isinstance(delay, (int, float)) or delay <= 0):
+        issues.error(t("The delay of the {name} block must be a number of seconds above 0.", name=name), step)
     if kind == "goto" and not (step.get("url") or "").strip():
         issues.error(t("The {name} block has no link.", name=name), step)
     if kind in TARGET_STEPS and not ((step.get("target") or {}).get("primary") or "").strip():
         issues.error(t("The {name} block has no element.", name=name), step)
+    if kind == "login":
+        password = step.get("password") or ""
+        if not (step.get("account") or "").strip():
+            issues.error(t("The {name} block has no account.", name=name), step)
+        if not password:
+            issues.error(t("The {name} block has no password.", name=name), step)
+        elif not WHOLE_SECRET.match(password):
+            issues.error(t("The password of the {name} block must be a saved secret, so it stays out of the flow file.", name=name), step)
     if kind in ("fill", "select") and step.get("value") in (None, ""):
         issues.error(t("The {name} block has no value.", name=name), step)
     if kind == "read" and not (step.get("save_to_var") or step.get("save_to_column")):
@@ -220,7 +234,7 @@ def validate(flow, context=None):
                 elif kind == "secret":
                     if not context.secret_exists(name):
                         issues.error(t("Secret {name} has not been saved.", name=name), step)
-                    if field == "value" and last_url.lower().startswith("http://") and "127.0.0.1" not in last_url:
+                    if field in ("value", "password") and last_url.lower().startswith("http://") and "127.0.0.1" not in last_url:
                         issues.warn(t("A secret is filled in on an http:// page, which is not encrypted."), step)
         if step.get("do") == "goto":
             last_url = step.get("url") or ""

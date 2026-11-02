@@ -131,7 +131,8 @@ class ShutdownTests(unittest.TestCase):
         self.api("POST", "/api/runs", {"flow_id": created["id"], "mode": "full"})
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            if self.browser_is_open():
+            # At the Wait block, past starting the browser and opening the page.
+            if self.browser_is_open() and any("Wait" in line["text"] for line in self.api("GET", "/api/log")["lines"]):
                 return
             time.sleep(0.5)
         self.fail("The browser did not open.")
@@ -154,6 +155,9 @@ class ShutdownTests(unittest.TestCase):
     def assert_next_start_works(self):
         """The next start serves again, and can open the browser on the same profile."""
         self.start_app()
+        self.assert_next_run_works()
+
+    def assert_next_run_works(self):
         created = self.api("POST", "/api/flows", {"name": "Lần sau"})
         flow = created["flow"]
         flow["steps"] = [{"id": "s1", "do": "goto", "url": f"{self.base}/demo/login"}]
@@ -234,6 +238,41 @@ class ShutdownTests(unittest.TestCase):
         ctypes.windll.user32.PostMessageW(find_window(title), WM_CLOSE, 0, 0)
         self.assert_all_gone(children)
         self.assertEqual(len(list(Path(self.data).glob("input_result_*.xlsx"))), 1)
+
+    def active_job(self):
+        return self.api("GET", "/api/active").get("job")
+
+    def wait_for_no_active_job(self, seconds=30):
+        deadline = time.monotonic() + seconds
+        while self.active_job() and time.monotonic() < deadline:
+            time.sleep(0.5)
+        self.assertIsNone(self.active_job())
+
+    def test_closing_the_run_browser_ends_the_run_and_frees_the_next_one(self):
+        app = self.start_app()
+        self.main_pid = app.pid
+        self.start_long_run()
+        self.assertEqual(self.active_job()["kind"], "run")
+        children = descendants(app.pid)
+        self.watched.update(children)
+        for pid, name in children.items():
+            if name.lower() == "chrome.exe":
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+        self.wait_for_no_active_job()
+        self.assert_next_run_works()
+
+    def test_stop_now_ends_a_run_that_nobody_can_reach(self):
+        app = self.start_app()
+        self.main_pid = app.pid
+        self.start_long_run()
+        job = self.active_job()
+        children = descendants(app.pid)
+        self.watched.update(children)
+        self.api("POST", "/api/active/stop", {})
+        self.assertIsNone(self.active_job())
+        self.assert_all_gone(children)
+        self.assertEqual(self.api("GET", f"/api/runs/{job['run_id']}")["outcome"], "stopped")
+        self.assert_next_run_works()
 
     def test_only_adopted_processes_die_with_the_app(self):
         """The person's own Chrome or Excel, opened from the app, must survive it closing."""

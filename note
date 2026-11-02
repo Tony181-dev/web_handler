@@ -1,6 +1,6 @@
 # Web Handler: ghi chú dự án
 
-Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.5**.
+Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.6**.
 
 Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
 
@@ -8,8 +8,8 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 
 | Hạng mục | Tình trạng |
 |---|---|
-| App, bộ cài exe và file zip 0.1.5 | Xong |
-| Test tự động của app | 181/181 đạt (`test_i18n` 19, `test_core` 58, `test_html_reader` 18, `test_shutdown` 7, `test_integration` 22, `test_ui` 57) |
+| App, bộ cài exe và file zip 0.1.6 | Xong |
+| Test tự động của app | 224/224 đạt (`test_i18n` 19, `test_core` 76, `test_html_reader` 18, `test_shutdown` 9, `test_integration` 27, `test_ui` 75) |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
 | Bộ cài có giao diện | **Chưa bấm thử bằng tay**, gồm các trang của trình cài và hộp hỏi xóa dữ liệu khi gỡ |
@@ -19,8 +19,8 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 ## Cách chạy
 
 - Bản đang dùng: bấm đúp `web_handler/dist/WebHandler/Start.bat`. Giữ cửa sổ đó mở, đóng nó là tắt app.
-- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.5.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
-- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.5.zip`, bấm đúp `Install.bat`.
+- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.6.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
+- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.6.zip`, bấm đúp `Install.bat`.
 - Không cài: giải nén zip vào nơi có quyền ghi, không dùng thư mục Temp, chạy `Start.bat`, bấm `Install missing`, rồi `Open app`.
 - Dữ liệu nằm trong thư mục `data` của từng nơi cài. Muốn dùng quy trình cũ ở bản cài mới thì đóng app rồi chép thư mục `data` sang.
 - Thử nhanh: bấm `Open sample flow`, rồi `▶ Run`.
@@ -37,6 +37,8 @@ python tests/test_ui.py
 python tools/build_package.py
 ```
 
+Để chia sẻ cho người khác: bấm đúp `web_handler/Build.bat`, rồi gửi file `dist/WebHandler-Setup-<version>.exe`.
+
 ## Tính năng đã có
 
 ### Setup và đóng gói
@@ -44,7 +46,7 @@ python tools/build_package.py
 - Màn hình Setup kiểm tra 7 mục: Python, thư viện, trình duyệt, quyền ghi, điều khiển trình duyệt, ghi thao tác, Credential Manager.
 - `Install missing` cài phần còn thiếu mà không cần mạng và không cần quyền admin, sau khi người dùng xác nhận.
 - Ưu tiên Chrome đã cài trên máy. Không có Chrome thì dùng Chromium riêng của app.
-- Bộ cài `WebHandler-Setup-<version>.exe` dựng bằng Inno Setup 6 từ `tools/installer.iss`. Nó tự cài thư viện nên mở app là dùng được ngay, có shortcut Start menu, tùy chọn shortcut Desktop, có mục gỡ trong Apps. Cài đè giữ nguyên `data`. Gỡ thì hỏi có xóa `data` không, mặc định giữ.
+- Bộ cài `WebHandler-Setup-<version>.exe` dựng bằng Inno Setup 6 từ `tools/installer.iss`. Nó tự cài thư viện nên mở app là dùng được ngay, có shortcut Start menu và Desktop, có mục gỡ trong Apps. Cài đè giữ nguyên `data`. Gỡ thì hỏi có xóa `data` không, mặc định giữ.
 - `Install.bat` làm việc tương tự từ zip, nhận thư mục đích tùy chọn. Cài kiểu này không có mục gỡ trong Apps.
 - File exe chưa ký số nên Windows hoặc phần mềm diệt virus có thể cảnh báo.
 
@@ -56,12 +58,14 @@ python tools/build_package.py
 - `main.py --stop` tắt app đang chạy, `main.py --install` cài phần còn thiếu. Hai lệnh này dành cho bộ cài.
 
 ### Dựng quy trình
-- `+ New flow` mở hộp chọn: `Blank flow` hoặc 3 mẫu `Login + Excel rows`, `Read into Excel`, `Repeat clicks`. Bấm là tạo ngay. Ô tên có thể để trống. Khối phụ thuộc trang để trống và ghi rõ công dụng, ví dụ `Ô tài khoản`. Mẫu dùng bí mật tên `your_account`, `your_password`, người dùng tự lưu trong `Secrets`.
-- 10 loại khối kéo thả: `Open link`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
+- `+ New flow` mở hộp chọn: `Blank flow` hoặc 3 mẫu `Login + Excel rows`, `Read into Excel`, `Repeat clicks`. Bấm là tạo ngay. Ô tên có thể để trống. Khối phụ thuộc trang để trống và ghi rõ công dụng, ví dụ `Ô tài khoản`. Mẫu `Login + Excel rows` dùng khối `Login` với bí mật tên `your_account`, `your_password`, người dùng tự lưu trong `Secrets`.
+- 11 loại khối kéo thả, cộng khối `Loop`: `Open link`, `Login`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
+- `Login`: bắt buộc điền `Account` và `Password`. `Password` chỉ chọn được từ `Secrets`, để mật khẩu không nằm trong file quy trình. Khối tự tìm ô tài khoản, ô mật khẩu và nút gửi, và báo lỗi nếu sau khi gửi form vẫn còn. Trang không có form thì coi như đã đăng nhập sẵn và ghi cảnh báo vào log. Chưa hỗ trợ form trong iframe và kiểu đăng nhập hai bước (nhập tài khoản rồi sang trang khác mới nhập mật khẩu), các trường hợp đó dùng khối `Fill` và `Click`.
 - `Wait`: tạm ngưng theo số giây, mặc định 3, nhận số lẻ. Lúc chạy, khối và dòng trạng thái đếm ngược. Bấm `Stop after this row` trong lúc chờ thì vẫn chờ hết và làm xong hàng đó. `Stop` trong `Check on live page` thì dừng ngay.
 - Rê chuột hoặc chuyển focus vào một khối, `Record` hay `Clear all` ở cột trái thì hiện popup giải thích. Bấm hoặc rời chuột là popup tắt.
+- Mọi khối hành động, trừ `Wait` và `Loop`, có mục `Delay` thu gọn ở cuối panel, mặc định trống. Điền số giây thì khối chờ sau khi làm xong rồi mới sang khối tiếp theo, có đếm ngược. Khối lỗi thì không chờ. Mục này tự mở khi đã có giá trị.
 - Sắp xếp lại bằng cách kéo khối, xóa bằng `Delete block` hoặc phím Delete.
-- `Loop`: kéo chuột khoanh các khối liên tiếp rồi bấm `Create loop`, để phần đăng nhập nằm ngoài vùng lặp. Lặp theo từng hàng Excel hoặc theo số lần cố định. Mỗi quy trình có một vùng lặp.
+- `Loop`: bấm hoặc kéo khối `Loop` viền xanh ở cột trái để thêm vùng lặp trống cao bằng một hàng khối, rồi kéo khối vào, vùng lặp tự giãn theo. Hoặc kéo chuột khoanh các khối liên tiếp rồi bấm `Create loop`, để phần đăng nhập nằm ngoài vùng lặp. Lặp theo từng hàng Excel hoặc theo số lần cố định. Mỗi quy trình có một vùng lặp.
 - `Clear all`: xóa mọi khối, vùng lặp và cấu hình Excel của quy trình, sau khi hỏi xác nhận. Giữ tên quy trình, file Excel, Secrets và lịch sử chạy. Không hoàn tác được.
 - `● Record`: làm tay một lượt trong Chrome, tool ghi lại thành các bước để xem lại trước khi đưa vào sơ đồ. Ô mật khẩu không bao giờ được ghi.
 - Quy trình tự lưu. Có thể nhân bản và xóa ở trang chính.
@@ -99,7 +103,7 @@ python tools/build_package.py
 - Sơ đồ trên màn hình chạy: khối sáng xanh dần theo bước đang chạy, hết vòng thì các khối trong vùng lặp trở lại bình thường.
   - Khối làm dừng lượt chạy sẽ đỏ và giữ nguyên.
   - Hàng lỗi mà lượt chạy vẫn tiếp tục thì khối đỏ thêm khoảng 1,5 giây sau khi sang hàng mới.
-- `Stop after this row`, `Continue`, `Stop`, `Resume`, `Retry failed rows`, `Retry failed and unclear rows`.
+- `Stop after this row`, `Stop now`, `Continue`, `Stop`, `Resume`, `Retry failed rows`, `Retry failed and unclear rows`.
 - Hàng lỗi có ảnh chụp màn hình (`View screenshot`). Tool tạm dừng sau 3 hàng lỗi liên tiếp.
 - Có nhật ký để chạy tiếp sau khi app dừng đột ngột. Hàng đang chạy dở được đánh dấu `Chưa rõ`.
 
@@ -151,13 +155,26 @@ python tools/build_package.py
 - Sửa vạch báo vị trí khi kéo khối: chuột ở cuối một hàng thì vạch nằm ngay sau khối cuối hàng đó, không nhảy xuống đầu hàng dưới. Khối thả vào vẫn xuống hàng mới nếu hàng đã đầy.
 - Mục Bí mật gợi ý `your_account` và `your_password`. Mẫu quy trình và các khối mật khẩu dùng cùng tên này. Quy trình đã lưu giữ nguyên tên cũ.
 
+### 0.1.6
+- Thêm khối `Login`, mẫu `Login + Excel rows` dùng khối này.
+- Tên bí mật được dùng ký tự đặc biệt, chỉ cấm `{`, `}`, ký tự điều khiển và dấu cách ở hai đầu. Trước đây tên bị giới hạn ở chữ, số và dấu gạch. Giá trị vốn không bị giới hạn. Sửa lỗi không xóa được bí mật có ký tự đặc biệt trong tên.
+- Thêm khối `Loop` ở cột trái. Cách khoanh rồi `Create loop` giữ nguyên.
+- Bảng bên phải kéo rộng được từ 320px tới 448px (thêm 40%) bằng mép trái hoặc phím mũi tên. Trình duyệt nhớ độ rộng này.
+- Sửa lỗi rời màn hình chạy thì không quay lại được, `Run` bị chặn và không có cách dừng. Giờ thanh trên cùng có nút `● Flow running` ở mọi màn hình, `Run` khi đang bận sẽ mở hộp có `Open running flow` và `Stop now`. Màn hình chạy cũng có `Stop now`.
+- Sửa lỗi đóng cửa sổ Chrome trong lúc `Wait` hoặc `Manual step` mà lượt chạy không hay biết, vẫn chạy mãi và chặn `Run`. Worker cũng báo kết thúc trước khi đóng trình duyệt, và bị tắt nếu 10 giây sau vẫn chưa thoát.
+- Ô `How to find it` và các nút cách nhận diện khác nằm chung một khung.
+- Thêm `Build.bat`: bấm đúp là tạo bộ cài và mở thư mục `dist`, chạy được từ bản clone sạch. Bộ cài bỏ các trang hỏi: chạy là cài vào `%LOCALAPPDATA%\Programs\WebHandler`, luôn tạo shortcut Desktop, rồi mở app.
+- Thêm dòng `author: Hoang Nguyen` dưới tên app.
+- Thêm mục `Delay` cho từng khối, viết lại popup của khối `Fill`.
+- Thêm nút `Open Excel` dưới `Log`, mở file Excel đã chọn. Chưa bấm thử thật vì test không được mở Excel trên máy.
+
 ## File chính
 
 Toàn bộ nằm trong `web_handler/`.
 
 | File hoặc thư mục | Vai trò |
 |---|---|
-| `Start.bat`, `Install.bat`, `README.txt`, `README.vi.txt` | Khởi động app, cài bằng script, hướng dẫn cho người dùng |
+| `Start.bat`, `Install.bat`, `Build.bat`, `README.txt`, `README.vi.txt` | Khởi động app, cài bằng script, hướng dẫn cho người dùng |
 | `app/main.py` | Điểm vào, dùng lại app nếu đang chạy |
 | `app/web_handler/server.py` | Server cục bộ và API |
 | `app/web_handler/jobs.py`, `workers.py`, `worker.py` | Quản lý và chạy tiến trình làm việc với trình duyệt |
@@ -176,7 +193,7 @@ Toàn bộ nằm trong `web_handler/`.
 | `tests/` | `test_i18n.py`, `test_core.py`, `test_html_reader.py`, `test_shutdown.py`, `test_integration.py`, `test_ui.py`, `test_probe.py` |
 | `tools/` | `build_package.py`, `installer.iss`, `build_probe.py`, các file requirements |
 | `probe/` | Công cụ dò khả năng chạy trên máy công ty |
-| `dist/` | `WebHandler-Setup-0.1.5.exe`, `WebHandler-0.1.5.zip`, các bản 0.1.3 và 0.1.4, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
+| `dist/` | `WebHandler-Setup-0.1.6.exe`, `WebHandler-0.1.6.zip`, các bản 0.1.3 đến 0.1.5, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
 
 Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-handler-design.md`, kế hoạch trong `plans/`.
 
@@ -187,7 +204,7 @@ Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-han
 - **Máy sạch không mạng:** chưa thử, kể cả bộ cài. Lúc thử gói, máy phát triển vẫn có mạng và có sẵn Python.
 - **Mở lại lần chạy cũ:** sau khi tắt app, giao diện không có danh sách các lần chạy, nên không tới được nút `Resume` của lần chạy dở nếu không còn link.
 - **File Excel đang mở trong Excel:** chưa thử.
-- **Trang đã đăng nhập sẵn:** khi sửa khối phía trước hoặc kiểm tra lùi về khối trước, `Check on live page` chạy lại từ đầu. Trang tự chuyển qua màn hình đăng nhập có thể làm khối đăng nhập báo không thấy ô nhập. `Run` cũng có thể gặp lỗi này nếu phiên đăng nhập còn hiệu lực.
+- **Trang đã đăng nhập sẵn (với khối `Fill` và `Click`, khối `Login` không bị):** khi sửa khối phía trước hoặc kiểm tra lùi về khối trước, `Check on live page` chạy lại từ đầu. Trang tự chuyển qua màn hình đăng nhập có thể làm khối đăng nhập báo không thấy ô nhập. `Run` cũng có thể gặp lỗi này nếu phiên đăng nhập còn hiệu lực.
 - **Xem lại lần chạy cũ:** sơ đồ chỉ sáng trong lúc app còn giữ lần chạy đó. Mở lại lần chạy đã kết thúc thì sơ đồ không có màu.
 - **Avast:** trên máy phát triển, Avast đã cách ly `Start.bat` (`IDP.HELU.PSD11`) khi gói chạy từ `C:\Windows\Temp` qua script. Chạy từ ổ `F:` thì không bị. Các bản thử nghiệm bị cách ly vẫn nằm trong khu cách ly của Avast.
 - **Quy trình YouTube đang lưu:** ở lần kiểm tra cuối, ô tìm kiếm đang dùng khối `Select` nên không chạy được, cần đổi sang `Fill`. Khối `Open link` khi đó còn trống.

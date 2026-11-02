@@ -9,6 +9,9 @@ AppVerName=Web Handler {#AppVersion}
 DefaultDirName={autopf}\WebHandler
 DefaultGroupName=Web Handler
 DisableProgramGroupPage=yes
+; One file to send to someone: they run it, and only the last page is left.
+DisableDirPage=yes
+DisableReadyPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
 OutputBaseFilename=WebHandler-Setup-{#AppVersion}
@@ -23,9 +26,6 @@ UninstallDisplayIcon={sys}\shell32.dll,13
 ; The app is closed by PrepareToInstall below, which also ends its workers.
 CloseApplications=no
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a shortcut on the Desktop"
-
 [Files]
 Source: "{#SourceDir}\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs ignoreversion
 Source: "{#SourceDir}\offline\*"; DestDir: "{app}\offline"; Flags: recursesubdirs ignoreversion
@@ -35,7 +35,7 @@ Source: "{#SourceDir}\README.vi.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Web Handler"; Filename: "{app}\Start.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 13
-Name: "{autodesktop}\Web Handler"; Filename: "{app}\Start.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 13; Tasks: desktopicon
+Name: "{autodesktop}\Web Handler"; Filename: "{app}\Start.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 13
 
 [Run]
 Filename: "{app}\Start.bat"; Description: "Open Web Handler"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent shellexec

@@ -177,14 +177,15 @@ const memory = {
 };
 
 const STEP_NAMES = {
-  goto: 'Open link', fill: 'Fill', click: 'Click', select: 'Select', check: 'Check',
+  goto: 'Open link', login: 'Login', fill: 'Fill', click: 'Click', select: 'Select', check: 'Check',
   read: 'Read value', wait_for: 'Wait for element', wait: 'Wait', verify: 'Verify', loop: 'Loop', manual_pause: 'Manual step',
 };
-const PALETTE = ['goto', 'fill', 'click', 'select', 'check', 'read', 'wait_for', 'wait', 'verify', 'manual_pause'];
+const PALETTE = ['goto', 'login', 'fill', 'click', 'select', 'check', 'read', 'wait_for', 'wait', 'verify', 'manual_pause', 'loop'];
 const DEFAULT_WAIT_SECONDS = 3;
 const STEP_HELP = {
   goto: 'Opens a web address in the browser. The address can be typed in or come from an Excel column.',
-  fill: 'Types a value into a box on the page: fixed text, an Excel column, a secret or a variable.',
+  login: 'Logs in on the open page: finds the login form, fills in the account and password, and sends it. The block fails if the form is still there afterwards.',
+  fill: 'Fills a value into a box on the page. The value can be: text you type in, the value of each cell in an Excel column, a saved Secret, or a Variable.',
   click: 'Clicks a button or link on the page. Tick the option to wait if the click opens another page.',
   select: 'Picks an option from a dropdown list by the text it shows.',
   check: 'Ticks or unticks a checkbox.',
@@ -192,6 +193,7 @@ const STEP_HELP = {
   wait_for: 'Waits until an element appears on the page, then goes on. The block fails if it does not appear in time.',
   wait: 'Pauses for a number of seconds, 3 by default, then goes on to the next block.',
   verify: 'Checks that the page is as expected, by the value of an element or by the address. The block fails if it is not.',
+  loop: 'Adds an empty loop. Drag blocks into it, and they repeat for each Excel row or a set number of times.',
   manual_pause: 'Pauses so you can do something by hand in Chrome, such as entering a login code, then click Continue.',
 };
 
