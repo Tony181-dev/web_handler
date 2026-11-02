@@ -155,6 +155,10 @@ class Runner:
             self.driver.check(target, bool(step.get("checked", True)), self.step_timeout)
         elif kind == "read":
             self.store_read(step, self.driver.read(target, self.step_timeout))
+        elif kind == "ocr":
+            text = self.driver.ocr(target, self.step_timeout)
+            case = step.get("text_case")
+            self.store_read(step, text.upper() if case == "upper" else text.lower() if case == "lower" else text)
         elif kind == "wait_for":
             self.driver.wait_for(target, self.step_timeout)
         elif kind == "wait":
@@ -211,6 +215,7 @@ class Runner:
         self.emit({"type": "log", "level": level, "text": self.context.mask(text)})
 
     def wait_for_user(self, message):
+        self.driver.show()
         self.emit({"type": "paused", "reason": self.context.mask(message)})
         decision = self.control.wait_decision(self.driver)
         self.emit({"type": "resumed", "decision": decision})

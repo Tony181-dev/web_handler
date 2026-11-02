@@ -8,7 +8,7 @@ from pathlib import Path
 import secrets
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, i18n, paths
+from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, i18n, paths, settings as app_settings
 from .i18n import t
 from .demo_site import DEMO_PASSWORD, DEMO_USER, DemoSite, make_demo_flow, make_demo_workbook
 from .jobs import JobManager
@@ -160,6 +160,8 @@ class App:
         context = self.check_context(flow, excel_path)
         issues = flow_module.validate(flow, context)
         result = issues.as_dict()
+        if app_settings.browser_mode() == app_settings.BROWSER_HEADLESS and any(step.get("do") == "manual_pause" for step, _ in flow_module.walk(flow)):
+            result["errors"].append({"step": None, "message": t("A Manual step block needs a window. Switch the browser to Visible or Offscreen.")})
         loop = flow_module.find_loop(flow)
         settings = flow.get("excel") or {}
         mode = body.get("mode", "full")
@@ -221,7 +223,7 @@ class App:
 
 def _letters_written(flow):
     for step, _ in flow_module.walk(flow):
-        if step.get("do") == "read" and step.get("save_to_column"):
+        if step.get("do") in flow_module.READING_STEPS and step.get("save_to_column"):
             yield step["save_to_column"]
 
 
@@ -385,6 +387,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_flows(method, rest)
         if head == "demo" and method == "POST":
             return self.send_json(app.make_demo())
+        if head == "browser-mode":
+            return self.api_browser_mode(method)
         if head == "active":
             return self.api_active(method, rest)
         if head == "excel" and method == "POST":
@@ -402,6 +406,16 @@ class Handler(BaseHTTPRequestHandler):
         if head == "record":
             return self.api_record(method, rest, query)
         raise ApiError(t("Not found."), 404)
+
+    def api_browser_mode(self, method):
+        if method == "PUT":
+            try:
+                app_settings.save_browser_mode(self.read_json().get("mode"))
+            except ValueError as error:
+                raise ApiError(t("Invalid command.")) from error
+        elif method != "GET":
+            raise ApiError(t("Not found."), 404)
+        return self.send_json({"mode": app_settings.browser_mode()})
 
     def api_active(self, method, rest):
         jobs = self.app.jobs

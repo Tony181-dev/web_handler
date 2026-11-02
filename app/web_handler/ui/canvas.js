@@ -56,12 +56,12 @@ function stepSummary(step) {
 }
 
 function stepIsIncomplete(step) {
-  const targetSteps = ['fill', 'click', 'select', 'check', 'read', 'wait_for'];
+  const targetSteps = ['fill', 'click', 'select', 'check', 'read', 'ocr', 'wait_for'];
   if (step.do === 'goto' && !step.url) return true;
   if (step.do === 'login' && !(step.account && step.password)) return true;
   if (targetSteps.includes(step.do) && !(step.target && step.target.primary)) return true;
   if ((step.do === 'fill' || step.do === 'select') && !step.value) return true;
-  if (step.do === 'read' && !step.save_to_var && !step.save_to_column) return true;
+  if ((step.do === 'read' || step.do === 'ocr') && !step.save_to_var && !step.save_to_column) return true;
   if (step.do === 'verify') {
     const hasUrl = step.url_contains || step.url_not_contains;
     const hasElement = (step.equals || step.contains) && step.target && step.target.primary;

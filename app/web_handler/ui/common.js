@@ -179,18 +179,19 @@ const memory = {
 
 const STEP_NAMES = {
   goto: 'Open link', login: 'Login', fill: 'Fill', click: 'Click', select: 'Select', check: 'Check',
-  read: 'Read value', wait_for: 'Wait for element', wait: 'Wait', verify: 'Verify', loop: 'Loop', manual_pause: 'Manual step',
+  read: 'Read value', ocr: 'Read OCR', wait_for: 'Wait for element', wait: 'Wait', verify: 'Verify', loop: 'Loop', manual_pause: 'Manual step',
 };
-const PALETTE = ['goto', 'login', 'fill', 'click', 'select', 'check', 'read', 'wait_for', 'wait', 'verify', 'manual_pause', 'loop'];
+const PALETTE = ['goto', 'login', 'fill', 'click', 'select', 'check', 'read', 'ocr', 'wait_for', 'wait', 'verify', 'manual_pause', 'loop'];
 const DEFAULT_WAIT_SECONDS = 3;
 const STEP_HELP = {
   goto: 'Opens a web address in the browser. The address can be typed in or come from an Excel column.',
-  login: 'Logs in on the open page: finds the login form, fills in the account and password, and sends it. The block fails if the form is still there afterwards.',
+  login: 'Logs in on the open page: finds the login form, fills in the account and password, and sends it. The block fails if the form is still there afterwards. If this block does not work in some cases, you can use 2 Fill blocks and 1 Click block instead.',
   fill: 'Fills a value into a box on the page. The value can be: text you type in, the value of each cell in an Excel column, a saved Secret, or a Variable.',
   click: 'Clicks a button or link on the page. Tick the option to wait if the click opens another page.',
   select: 'Picks an option from a dropdown list by the text it shows.',
   check: 'Ticks or unticks a checkbox.',
   read: 'Reads a value from the page and keeps it in a variable or writes it to a column of the result file.',
+  ocr: 'Reads the text in a picture on the page, such as a simple captcha, and keeps it in a variable or writes it to a column of the result file. The picture is read in memory and never saved.',
   wait_for: 'Waits until an element appears on the page, then goes on. The block fails if it does not appear in time.',
   wait: 'Pauses for a number of seconds, 3 by default, then goes on to the next block.',
   verify: 'Checks that the page is as expected, by the value of an element or by the address. The block fails if it is not.',

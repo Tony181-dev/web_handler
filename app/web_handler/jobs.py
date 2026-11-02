@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import flow as flow_module, paths, runner
+from . import flow as flow_module, paths, runner, settings
 from .i18n import t
 from .workers import WorkerSession
 
@@ -157,6 +157,7 @@ class JobManager:
                 "journal_path": str(run.folder / "journal.jsonl"),
                 "screenshot_dir": str(run.folder),
                 "include_unknown": include_unknown,
+                "browser_mode": settings.browser_mode(),
             }
             if previous_run:
                 job["previous_journal"] = str(paths.runs_dir() / previous_run / "journal.jsonl")

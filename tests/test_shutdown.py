@@ -23,29 +23,35 @@ NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 WM_CLOSE = 0x0010
 LONG_WAIT_SECONDS = 600
 GONE_WITHIN_SECONDS = 15
+# Windows reuses process numbers, so a number alone can point at someone else's process.
+OURS = {"python.exe", "node.exe", "chrome.exe", "chrome_crashpad_handler.exe", "conhost.exe", "cmd.exe"}
 
 
 def process_table():
-    """Every process on the machine, as {pid: (parent pid, name)}."""
+    """Every process on the machine, as {pid: (parent pid, name, start time)}."""
     output = subprocess.run(
         ["powershell", "-NoProfile", "-Command",
-         "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, $_.Name }"],
+         "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2} {3}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.Ticks, $_.Name }"],
         capture_output=True, text=True, check=True,
     ).stdout
     table = {}
     for line in output.splitlines():
-        parts = line.split(maxsplit=2)
-        if len(parts) == 3:
-            table[int(parts[0])] = (int(parts[1]), parts[2])
+        parts = line.split(maxsplit=3)
+        if len(parts) == 4:
+            table[int(parts[0])] = (int(parts[1]), parts[3], int(parts[2]))
     return table
 
 
 def descendants(root):
+    """Processes started by this one. One older than its supposed parent only shares a reused number."""
     table = process_table()
     found = set()
     frontier = {root}
     while frontier:
-        frontier = {pid for pid, (parent, _) in table.items() if parent in frontier} - found
+        frontier = {
+            pid for pid, (parent, _, started) in table.items()
+            if parent in frontier and parent in table and started >= table[parent][2]
+        } - found
         found |= frontier
     return {pid: table[pid][1] for pid in found}
 
@@ -76,12 +82,13 @@ class ShutdownTests(unittest.TestCase):
         self.addCleanup(self.kill_everything)
 
     def kill_everything(self):
+        # Only what these tests started: still running, with the same name, and of a kind they start.
         for process in self.started:
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
-        # A failed test leaves processes whose parent is gone, which /T can no longer reach.
+            if process.poll() is None:
+                process.kill()
         table = process_table()
         for pid, name in self.watched.items():
-            if table.get(pid, (0, ""))[1] == name:
+            if pid in table and table[pid][1] == name and name.lower() in OURS:
                 subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
 
     def main_command(self):
@@ -294,7 +301,7 @@ class ShutdownTests(unittest.TestCase):
         self.started.append(parent)
         line = parent.stdout.readline()
         adopted, free = json.loads(line)
-        self.addCleanup(subprocess.run, ["taskkill", "/F", "/PID", str(free)], capture_output=True)
+        self.watched[free] = Path(sys.executable).name
         name = Path(sys.executable).name
         subprocess.run(["taskkill", "/F", "/PID", str(parent.pid)], capture_output=True, check=True)
         self.assert_all_gone({adopted: name})

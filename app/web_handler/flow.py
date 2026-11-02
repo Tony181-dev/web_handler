@@ -22,13 +22,15 @@ STEP_NAMES = {
     "select": "Select",
     "check": "Check",
     "read": "Read value",
+    "ocr": "Read OCR",
     "wait_for": "Wait for element",
     "wait": "Wait",
     "verify": "Verify",
     "loop": "Loop",
     "manual_pause": "Manual step",
 }
-TARGET_STEPS = {"fill", "click", "select", "check", "read", "wait_for"}
+TARGET_STEPS = {"fill", "click", "select", "check", "read", "ocr", "wait_for"}
+READING_STEPS = ("read", "ocr")
 TEMPLATE_FIELDS = ("url", "account", "password", "value", "equals", "contains", "url_contains", "url_not_contains")
 WHOLE_SECRET = re.compile(r"^\{\{\s*secret:[^{}]+\}\}$")
 
@@ -161,15 +163,18 @@ def _check_step_fields(step, issues):
         issues.error(t("The {name} block has no element.", name=name), step)
     if kind == "login":
         password = step.get("password") or ""
-        if not (step.get("account") or "").strip():
+        account = step.get("account") or ""
+        if not account.strip():
             issues.error(t("The {name} block has no account.", name=name), step)
+        elif any(source == "secret" for source, _ in _safe_references(account)):
+            issues.error(t("The account of the {name} block cannot be a secret, as it shows on the page. Type it in or take it from Excel.", name=name), step)
         if not password:
             issues.error(t("The {name} block has no password.", name=name), step)
         elif not WHOLE_SECRET.match(password):
             issues.error(t("The password of the {name} block must be a saved secret, so it stays out of the flow file.", name=name), step)
     if kind in ("fill", "select") and step.get("value") in (None, ""):
         issues.error(t("The {name} block has no value.", name=name), step)
-    if kind == "read" and not (step.get("save_to_var") or step.get("save_to_column")):
+    if kind in READING_STEPS and not (step.get("save_to_var") or step.get("save_to_column")):
         issues.error(t("The {name} block has no place to save to.", name=name), step)
     if kind == "wait":
         seconds = step.get("seconds")
@@ -238,7 +243,7 @@ def validate(flow, context=None):
                         issues.warn(t("A secret is filled in on an http:// page, which is not encrypted."), step)
         if step.get("do") == "goto":
             last_url = step.get("url") or ""
-        if step.get("do") == "read":
+        if step.get("do") in READING_STEPS:
             if step.get("save_to_var"):
                 known_vars.add(step["save_to_var"])
             column = step.get("save_to_column")

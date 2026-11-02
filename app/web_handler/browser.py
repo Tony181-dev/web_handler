@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import time
 
-from . import paths, setup_checks
+from . import ocr, paths, settings, setup_checks
 from .browser_errors import BrowserClosed, ElementError
 from .i18n import t
 
@@ -26,9 +26,11 @@ FILLABLE = (
 )
 
 
-def launch_options():
+def launch_options(mode=settings.BROWSER_VISIBLE):
     """Prefer the installed Chrome, and use the bundled Chromium only without one."""
-    options = {"headless": os.environ.get("WEB_HANDLER_HEADLESS") == "1"}
+    options = {"headless": mode == settings.BROWSER_HEADLESS or os.environ.get("WEB_HANDLER_HEADLESS") == "1"}
+    if mode == settings.BROWSER_OFFSCREEN and not options["headless"]:
+        options["args"] = ["--start-minimized"]
     if setup_checks.find_chrome():
         options["channel"] = "chrome"
         return options
@@ -40,7 +42,9 @@ def launch_options():
 
 
 class ChromeDriver:
-    def __init__(self):
+    def __init__(self, mode=settings.BROWSER_VISIBLE):
+        self.mode = mode
+        self.has_window = False
         self._playwright = None
         self.context = None
         self.page = None
@@ -53,8 +57,10 @@ class ChromeDriver:
         profile = paths.profile_dir()
         profile.mkdir(parents=True, exist_ok=True)
         try:
+            options = launch_options(self.mode)
+            self.has_window = not options["headless"]
             self.context = self._playwright.chromium.launch_persistent_context(
-                str(profile), no_viewport=True, **launch_options()
+                str(profile), no_viewport=True, **options
             )
         except Exception as error:
             self._stop_playwright()
@@ -69,6 +75,38 @@ class ChromeDriver:
         self.context.on("page", self._on_page)
         pages = self.context.pages
         self.page = pages[0] if pages else self.context.new_page()
+        if self.mode == settings.BROWSER_OFFSCREEN:
+            # The start option is not always honoured, for example when Chrome restores a window.
+            self._set_window_state("minimized")
+        else:
+            self.show()
+
+    def _set_window_state(self, state):
+        if not self.has_window:
+            return
+
+        def action():
+            session = self.context.new_cdp_session(self.page)
+            try:
+                window = session.send("Browser.getWindowForTarget")["windowId"]
+                session.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": state}})
+            finally:
+                session.detach()
+
+        try:
+            self._guard(action)
+        except BrowserClosed:
+            raise
+        except Exception:
+            # Only about how the window looks, which must never stop a run.
+            pass
+
+    def show(self):
+        """Bring the window up, also from the taskbar."""
+        if not self.has_window:
+            return
+        self._set_window_state("normal")
+        self._guard(self.page.bring_to_front)
 
     def _on_page(self, page):
         # A click that opens a new window continues in that window, as a person would.
@@ -211,6 +249,18 @@ class ChromeDriver:
     def read(self, target, timeout):
         return self._guard(lambda: self._read(self._resolve(target, timeout), timeout))
 
+    def ocr(self, target, timeout):
+        """Read the text in an element's picture. The picture stays in memory, so nothing is left to delete."""
+
+        def action():
+            image = self._resolve(target, timeout).screenshot(timeout=timeout * 1000)
+            text = ocr.read_text(image)
+            if not text:
+                raise ElementError(t("No text could be read from {element}.", element=target["primary"]))
+            return text
+
+        return self._guard(action)
+
     def wait_for(self, target, timeout):
         self._guard(lambda: self._resolve(target, timeout).wait_for(state="visible", timeout=timeout * 1000))
 
@@ -236,13 +286,13 @@ class ChromeDriver:
             if count == 0:
                 return False
             if count > 1:
-                raise ElementError(t("The page has {count} password fields, so the tool does not guess. Fill in the block's fields for finding them.", count=count))
+                raise ElementError(t("The page has {count} password fields, so the tool does not guess. Fill in Specify the login form yourself in the block.", count=count))
             if selectors["account"]:
                 account_field = self.page.locator(selectors["account"])
             else:
                 account_field = password_field.evaluate_handle(FIND_ACCOUNT_FIELD).as_element()
                 if account_field is None:
-                    raise ElementError(t("No account field was found before the password field. Fill in the block's fields for finding them."))
+                    raise ElementError(t("No account field was found before the password field. Fill in Specify the login form yourself in the block."))
             account_field.fill(account, timeout=timeout * 1000)
             password_field.fill(password, timeout=timeout * 1000)
             if selectors["submit"]:

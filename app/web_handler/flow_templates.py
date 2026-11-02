@@ -17,7 +17,7 @@ def _login_excel():
         "excel": _excel("A", "B"),
         "steps": [
             {"do": "goto", "note": t("Login page link"), "url": ""},
-            {"do": "login", "account": "{{secret:your_account}}", "password": "{{secret:your_password}}"},
+            {"do": "login", "account": "", "password": "{{secret:your_password}}"},
             {
                 "do": "loop", "source": "excel", "count": 1,
                 "steps": [

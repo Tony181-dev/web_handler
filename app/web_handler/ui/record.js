@@ -84,7 +84,7 @@ function sourceOptions(editor, step) {
     }))));
   }
   if (editor.secretNames.length) {
-    options.push(el('optgroup', { label: t('Secret') }, editor.secretNames.map(name => el('option', { value: `{{secret:${name}}}`, text: name }))));
+    options.push(el('optgroup', { label: t('Secret') }, editor.secretNames.map(name => el('option', { value: `{{secret:${name}}}`, text: t('Secret value of {name}', { name }) }))));
   }
   return options;
 }

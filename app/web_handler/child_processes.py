@@ -1,12 +1,13 @@
 """Everything the app starts for itself ends with it, however the app ends.
 
-Windows closes a job when the last handle to it goes, which happens when this process is gone
-for any reason, and then ends every process in the job along with what those processes started.
+Each helper gets its own Windows job. Windows closes a job when the last handle to it goes, which
+happens when this process is gone for any reason, and then ends every process in the job along with
+what those processes started. A job also ends exactly that helper's processes on request, unlike
+following parent process numbers, which Windows reuses for unrelated programs.
 Only the app's own helpers go in: a browser or Excel opened for the person must outlive the app.
 """
 import ctypes
 from ctypes import wintypes
-import threading
 
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
@@ -20,6 +21,7 @@ _kernel32.CreateJobObjectW.restype = wintypes.HANDLE
 _kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
 _kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD)
 _kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+_kernel32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
 _kernel32.OpenProcess.restype = wintypes.HANDLE
 _kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
 _kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
@@ -62,33 +64,30 @@ class _ExtendedLimits(ctypes.Structure):
     ]
 
 
-_job = None
-_job_lock = threading.Lock()
-
-
-def _the_job():
-    global _job
-    with _job_lock:
-        if _job is None:
-            job = _kernel32.CreateJobObjectW(None, None)
-            if not job:
-                raise ctypes.WinError(ctypes.get_last_error())
-            limits = _ExtendedLimits()
-            limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-            if not _kernel32.SetInformationJobObject(
-                job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(limits), ctypes.sizeof(limits),
-            ):
-                raise ctypes.WinError(ctypes.get_last_error())
-            _job = job
-        return _job
-
-
 def adopt(process):
-    """Tie a just-started subprocess.Popen to this process's life. Returns False if Windows refuses."""
-    try:
-        return bool(_kernel32.AssignProcessToJobObject(_the_job(), int(process._handle)))
-    except OSError:
-        return False
+    """Tie a just-started subprocess.Popen to this process's life. Returns its job, or None if Windows refuses."""
+    job = _kernel32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    limits = _ExtendedLimits()
+    limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    configured = _kernel32.SetInformationJobObject(
+        job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(limits), ctypes.sizeof(limits),
+    )
+    if configured and _kernel32.AssignProcessToJobObject(job, int(process._handle)):
+        return job
+    _kernel32.CloseHandle(job)
+    return None
+
+
+def end_job(job):
+    """End the helper and everything it started."""
+    _kernel32.TerminateJobObject(job, 1)
+
+
+def release_job(job):
+    """The helper has finished. Closing its job also ends anything it left behind."""
+    _kernel32.CloseHandle(job)
 
 
 def _creation_time(handle):

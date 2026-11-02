@@ -11,7 +11,7 @@ from . import paths, setup_checks
 from .i18n import t
 from .workers import WorkerSession
 
-LIBRARY_NAMES = ("playwright", "openpyxl", "beautifulsoup4", "keyring")
+LIBRARY_NAMES = ("playwright", "openpyxl", "beautifulsoup4", "keyring", "ddddocr")
 SELF_TESTS = {
     "browser_control": ("browser", "Browser control"),
     "recording": ("recording", "Recording actions"),
@@ -46,7 +46,7 @@ class SetupManager:
         )
         returncode, output, _ = setup_checks.run_with_timeout([sys.executable, "-c", code], 90)
         if returncode == 0:
-            return {"status": "PASS", "detail": ", ".join(output.split("\n")[:4]).replace("\r", "").strip(", ")}
+            return {"status": "PASS", "detail": ", ".join(output.split("\n")[:len(LIBRARY_NAMES)]).replace("\r", "").strip(", ")}
         detail = t("The libraries are not installed.")
         if paths.SITE_DIR.is_dir() and any(paths.SITE_DIR.iterdir()):
             detail = t("The libraries are incomplete or damaged: {error}", error=output.strip().splitlines()[-1][:200]) if output.strip() else t("The libraries are damaged.")

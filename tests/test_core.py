@@ -4,12 +4,13 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 sys.path.insert(0, str(ROOT / "runtime" / "site"))
 
-from web_handler import excel, flow as flow_module, flow_templates, i18n, runner, secret_store, templating, worker
+from web_handler import browser, excel, flow as flow_module, flow_templates, i18n, runner, secret_store, settings, templating, worker
 from web_handler.browser_errors import BrowserClosed, ElementError
 
 i18n.use("en")
@@ -308,6 +309,13 @@ class FakeDriver:
     def wait_for(self, target, timeout):
         self._record("wait_for", target)
 
+    def ocr(self, target, timeout):
+        self._record("ocr", target)
+        return self.values.get(target["primary"], "")
+
+    def show(self):
+        self.calls.append(("show", None, None))
+
     def login(self, account, password, selectors, timeout, navigation_timeout):
         self.calls.append(("login", account, password, selectors))
         problem = self.fail_on.get("login")
@@ -530,6 +538,22 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(outcome, "after_loop_failed")
         self.assertEqual(self.statuses(), {2: "OK"})
 
+    def test_ocr_result_reaches_later_blocks_in_the_chosen_case(self):
+        for case, expected in ((None, "aB7"), ("upper", "AB7"), ("lower", "ab7")):
+            with self.subTest(case=case):
+                flow = {"steps": [
+                    {"id": "s1", "do": "ocr", "target": target("#img"), "save_to_var": "code", "text_case": case},
+                    {"id": "s2", "do": "fill", "target": target("#box"), "value": "{{var:code}}"},
+                ]}
+                outcome, _ = self.run_flow(flow, FakeDriver(values={"#img": "aB7"}))
+                self.assertEqual(outcome, "finished")
+                self.assertIn(("fill", "#box", expected), self.driver.calls)
+
+    def test_manual_step_brings_the_window_up(self):
+        flow = {"steps": [{"id": "s1", "do": "manual_pause", "message": "x"}]}
+        self.run_flow(flow, control=ScriptedControl(decisions=["continue"]))
+        self.assertIn(("show", None, None), self.driver.calls)
+
     def test_block_delay_waits_after_the_block_and_counts_down(self):
         control = ScriptedControl()
         flow = {"steps": [
@@ -574,10 +598,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(self.driver.calls, [])
 
 
-    SECRETS = {"me": "my-account", "pw": "p@ss{{A}}$1"}
+    SECRETS = {"pw": "p@ss{{A}}$1"}
 
     def login_flow(self, **fields):
-        step = {"id": "s1", "do": "login", "account": "{{secret:me}}", "password": "{{secret:pw}}", **fields}
+        step = {"id": "s1", "do": "login", "account": "my-account", "password": "{{secret:pw}}", **fields}
         return {"steps": [step]}
 
     def test_fills_in_the_rendered_account_and_password(self):
@@ -614,6 +638,12 @@ class LoginValidationTests(unittest.TestCase):
     def test_account_is_required(self):
         self.assertEqual(self.errors_for(account="", password="{{secret:pw}}"), ["The Login block has no account."])
 
+    def test_account_cannot_be_a_secret_because_it_shows_on_the_page(self):
+        for account in ("{{secret:me}}", "x{{secret:me}}"):
+            with self.subTest(account=account):
+                errors = self.errors_for(account=account, password="{{secret:pw}}")
+                self.assertTrue(any("cannot be a secret" in item for item in errors), errors)
+
     def test_password_is_required(self):
         self.assertEqual(self.errors_for(account="me", password=""), ["The Login block has no password."])
 
@@ -649,6 +679,58 @@ class SecretNameTests(unittest.TestCase):
         value = "p@$$w0rd!#%^&*()_+-=[]{}|;:'\",.<>/?`~\\ {{A}} \\1 \u00e0"
         context = templating.Context({"pw": value}.get)
         self.assertEqual(templating.render("{{secret:pw}}", context), value)
+
+
+class BrowserModeTests(unittest.TestCase):
+    def options(self, mode):
+        with unittest.mock.patch.dict("os.environ", {"WEB_HANDLER_HEADLESS": ""}):
+            with unittest.mock.patch.object(browser.setup_checks, "find_chrome", lambda: "chrome.exe"):
+                return browser.launch_options(mode)
+
+    def test_visible_shows_a_normal_window(self):
+        options = self.options("visible")
+        self.assertFalse(options["headless"])
+        self.assertNotIn("--start-minimized", options.get("args", []))
+
+    def test_offscreen_starts_in_the_taskbar_with_a_real_window(self):
+        options = self.options("offscreen")
+        self.assertFalse(options["headless"])
+        self.assertIn("--start-minimized", options["args"])
+
+    def test_headless_has_no_window(self):
+        self.assertTrue(self.options("headless")["headless"])
+
+    def test_saved_mode_is_kept_and_unknown_modes_are_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with unittest.mock.patch.object(settings.paths, "data_dir", lambda: Path(folder)):
+                self.assertEqual(settings.browser_mode(), "visible")
+                settings.save_browser_mode("offscreen")
+                self.assertEqual(settings.browser_mode(), "offscreen")
+                with self.assertRaises(ValueError):
+                    settings.save_browser_mode("sideways")
+                self.assertEqual(settings.browser_mode(), "offscreen")
+
+
+class OcrValidationTests(unittest.TestCase):
+    def errors_for(self, **fields):
+        step = {"id": "s1", "do": "ocr", "target": target("#img"), **fields}
+        return [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
+
+    def test_needs_a_place_to_save(self):
+        self.assertEqual(self.errors_for(), ["The Read OCR block has no place to save to."])
+        self.assertEqual(self.errors_for(save_to_var="code"), [])
+
+    def test_needs_an_element(self):
+        step = {"id": "s1", "do": "ocr", "save_to_var": "code", "target": target("")}
+        errors = [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
+        self.assertEqual(errors, ["The Read OCR block has no element."])
+
+    def test_its_variable_can_be_used_later(self):
+        flow = {"steps": [
+            {"id": "s1", "do": "ocr", "target": target("#img"), "save_to_var": "code"},
+            {"id": "s2", "do": "fill", "target": target("#box"), "value": "{{var:code}}"},
+        ]}
+        self.assertEqual(flow_module.validate(flow).errors, [])
 
 
 class BlockDelayValidationTests(unittest.TestCase):
@@ -727,6 +809,8 @@ class FlowTemplateTests(unittest.TestCase):
                 step["target"] = target("#element")
             if step.get("do") == "goto" and not step["url"]:
                 step["url"] = "https://example.test/"
+            if step.get("do") == "login":
+                step["account"] = "me"
 
     def test_catalog_lists_every_template_with_english_label_and_a_hint(self):
         catalog = flow_templates.catalog()

@@ -33,8 +33,8 @@ AN TOÀN DỮ LIỆU
 - "Kiểm tra trên trang thật" chạy thật các khối phía trước, với hàng đầu tiên của Excel. Riêng khối đang kiểm tra không được thực hiện.
 - Nút "Nhật ký" hiện nhật ký của hệ thống. Nhật ký không chứa mật khẩu hay giá trị đã điền, và nằm trong thư mục data.
 - Thư mục data chứa quy trình, ảnh chụp lỗi và phiên đăng nhập. Đừng gửi thư mục đó cho người khác.
-- Tool không vượt captcha hay MFA. Dùng khối "Làm tay" cho các bước đó.
-- Hãy chắc chắn quy định của hệ thống cho phép tự động hóa trước khi dùng.
+- Khối "Đọc OCR" đọc được captcha đơn giản, và có thể đọc sai. Khối chạy trên máy này, ảnh không được lưu hay gửi đi đâu. Với MFA và captcha khó, hãy dùng khối "Làm tay".
+- Hãy chắc chắn quy định của hệ thống cho phép tự động hóa, kể cả việc đọc captcha, trước khi dùng.
 
 CHIA SẺ CHO NGƯỜI KHÁC
 Bấm đúp Build.bat trong thư mục mã nguồn. Lần đầu cần có mạng, Python 3 và Inno Setup 6.

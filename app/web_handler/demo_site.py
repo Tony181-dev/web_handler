@@ -3,6 +3,7 @@
 It is also the site the automated tests run against. Nothing here is persisted:
 the items reset when the app restarts.
 """
+import base64
 from html import escape
 from http.cookies import SimpleCookie
 import secrets
@@ -16,6 +17,13 @@ DEMO_USER = "demo"
 DEMO_PASSWORD = "demo-password"
 LOCKED_ITEM = 3
 PRIORITIES = ("Low", "Medium", "High")
+DEMO_CAPTCHA = "A7K3P"
+CAPTCHA_PICTURE = base64.b64encode(
+    (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='170' height='60'><rect width='100%' height='100%' fill='#f5f5f5'/>"
+        f"<text x='14' y='43' font-family='Arial' font-size='36' font-weight='700' letter-spacing='5'>{DEMO_CAPTCHA}</text></svg>"
+    ).encode("ascii")
+).decode("ascii")
 
 STYLE = """
 <style>
@@ -119,6 +127,7 @@ class DemoSite:
         return self.page(
             t("Playground"),
             f"<h2>{t('Playground for trying elements')}</h2>"
+            f"<p><img id='captcha' alt='' src='data:image/svg+xml;base64,{CAPTCHA_PICTURE}'></p>"
             f"<label for='note'>{t('Note')}</label><textarea id='note' name='note'></textarea>"
             f"<label for='auto'>{t('Field with an auto-generated ID')}</label><input type='text' id='ember{secrets.randbelow(90000) + 10000}' name='auto-field'>"
             f"<button id='open-popup' type='button' onclick=\"document.getElementById('popup').style.display='block'\">{t('Open popup')}</button> "

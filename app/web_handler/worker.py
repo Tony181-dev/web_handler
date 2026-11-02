@@ -14,7 +14,7 @@ import time
 import traceback
 
 from . import browser as browser_module
-from . import excel, flow as flow_module, html_reader, i18n, recorder as recorder_module, runner, secret_store, templating
+from . import excel, flow as flow_module, html_reader, i18n, recorder as recorder_module, runner, secret_store, settings as app_settings, templating
 from .browser_errors import BrowserClosed, ElementError
 from .i18n import t
 
@@ -131,6 +131,7 @@ class Commands:
 
 
 def run_flow(job, commands):
+    # Only a run can hide its window: checking and recording are done by looking at it.
     flow = flow_module.load_flow(job["flow_path"])
     if job.get("excel_settings"):
         flow["excel"] = {**(flow.get("excel") or {}), **job["excel_settings"]}
@@ -173,7 +174,7 @@ def run_flow(job, commands):
                     message=t("(from the previous run)"), written=previous_written.get(number) or {},
                 )
 
-    driver = browser_module.ChromeDriver()
+    driver = browser_module.ChromeDriver(job.get("browser_mode") or app_settings.BROWSER_VISIBLE)
     outcome = "failed"
     message = ""
     result_file = None

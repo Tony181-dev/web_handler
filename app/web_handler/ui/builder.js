@@ -4,6 +4,11 @@ const INSPECTOR_MIN_WIDTH = 320;
 const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
 const INSPECTOR_KEY_STEP = 16;
 const HISTORY_LIMIT = 200;
+const BROWSER_MODES = {
+  visible: ['Browser: Visible', 'Run and Run once open the window and bring it to the front.'],
+  offscreen: ['Browser: Offscreen', 'Run and Run once keep the window in the taskbar. Click it there to see it.'],
+  headless: ['Browser: Headless', 'Run and Run once have no window at all. A Manual step block cannot be used.'],
+};
 
 class FlowEditor {
   constructor(id, flow) {
@@ -23,6 +28,7 @@ class FlowEditor {
     this.failedStep = null;
     this.save = debounce(() => this.persist(), 500);
     this.onKey = event => this.handleKey(event);
+    this.browserMode = 'visible';
     this.resetHistory();
   }
 
@@ -130,7 +136,7 @@ class FlowEditor {
 
   makeStep(kind) {
     const step = { id: nextStepId(this.flow), do: kind };
-    if (['fill', 'click', 'select', 'check', 'read', 'wait_for'].includes(kind)) {
+    if (['fill', 'click', 'select', 'check', 'read', 'ocr', 'wait_for'].includes(kind)) {
       step.target = { primary: '', fallbacks: [], frames: [], verified: false };
     }
     if (kind === 'fill' || kind === 'select') step.value = '';
@@ -141,7 +147,7 @@ class FlowEditor {
     if (kind === 'verify') { step.target = { primary: '', fallbacks: [], frames: [], verified: false }; step.equals = ''; }
     if (kind === 'manual_pause') step.message = '';
     if (kind === 'wait') step.seconds = DEFAULT_WAIT_SECONDS;
-    if (kind === 'read') step.save_to_var = '';
+    if (kind === 'read' || kind === 'ocr') step.save_to_var = '';
     return step;
   }
 
@@ -325,7 +331,7 @@ class FlowEditor {
       const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : t('No Excel file selected');
       parts.push(
         el('button.btn', { id: 'pick-excel', text: t('Select Excel'), onclick: () => this.pickExcel() }),
-        el('span.file-name', { id: 'excel-name', text: name, title: this.excelPath }));
+        this.excelPath ? attachHelp(el('span.file-name', { id: 'excel-name', text: name }), this.excelPath) : el('span.file-name', { id: 'excel-name', text: name }));
       if (this.sheets.length) {
         const sheetSelect = el('select', {
           id: 'excel-sheet', 'aria-label': 'Sheet',
@@ -366,18 +372,33 @@ class FlowEditor {
       parts.push(el('span', { text: t('Number of runs') }), count);
     }
     this.saveStateNode = el('span.save-state', { text: this.saveStateNode ? this.saveStateNode.textContent : '' });
+    const [modeLabel, modeHelp] = BROWSER_MODES[this.browserMode];
+    const modeButton = el('button.btn', {
+      id: 'browser-mode', text: t(modeLabel), title: t(modeHelp),
+      onclick: () => this.nextBrowserMode(),
+    });
     this.undoNode = el('button.btn', { id: 'undo', text: t('↶ Undo'), title: t('Undo the last change (Ctrl+Z)'), onclick: () => this.moveInHistory(-1) });
     this.redoNode = el('button.btn', { id: 'redo', text: t('↷ Redo'), title: t('Redo the change (Ctrl+Y)'), onclick: () => this.moveInHistory(1) });
     this.refreshHistoryButtons();
     parts.push(
       el('span.spacer'),
       this.saveStateNode,
+      modeButton,
       this.undoNode,
       this.redoNode,
       el('button.btn', { id: 'run-trial', text: t('Run once'), onclick: () => startRunFlow(this, 'trial') }),
       el('button.btn.primary', { id: 'run-full', text: t('▶ Run'), onclick: () => startRunFlow(this, 'full') }));
     bar.replaceChildren(...parts);
     this.showRowCount();
+  }
+
+  async nextBrowserMode() {
+    const modes = Object.keys(BROWSER_MODES);
+    const wanted = modes[(modes.indexOf(this.browserMode) + 1) % modes.length];
+    try {
+      this.browserMode = (await api('PUT', '/api/browser-mode', { mode: wanted })).mode;
+      this.renderRunbar();
+    } catch (error) { showError(error); }
   }
 
   showRowCount() {
@@ -486,11 +507,10 @@ async function renderBuilder(id) {
     }),
     el('div', { style: 'height:10px' }),
     attachHelp(el('button.btn.record', { id: 'start-record', text: t('● Record'), style: 'width:100%', onclick: () => startRecording(editor) }), t('Do the work once by hand in Chrome, and the tool turns it into blocks.')),
-    editor.clearNode,
-    el('div.palette-foot', null, logButton()));
+    editor.clearNode);
 
   const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
-  builder.append(inspectorResizer(builder));
+  builder.append(inspectorResizer(builder), el('div.canvas-log', null, logButton()));
   view.replaceChildren(builder);
 
   document.addEventListener('keydown', editor.onKey);
@@ -504,6 +524,7 @@ async function renderBuilder(id) {
   };
 
   await editor.loadSecrets();
+  editor.browserMode = await api('GET', '/api/browser-mode').then(data => data.mode).catch(() => 'visible');
   editor.render();
   if (editor.excelPath) await editor.loadExcel(editor.excelPath);
   // Filling in what the open Excel file shows is not something to undo.

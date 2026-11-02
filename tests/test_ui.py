@@ -68,7 +68,7 @@ class AppTestCase(unittest.TestCase):
     def tearDownClass(cls):
         cls.browser.close()
         cls.playwright.stop()
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(cls.app.pid)], capture_output=True)
+        cls.app.kill()
         for name in ("demo_user", "demo_password", "ui_test"):
             secret_store.delete_secret(name)
         shutil.rmtree(DATA, ignore_errors=True)
@@ -374,6 +374,13 @@ class BuilderTests(AppTestCase):
         self.page.click("[data-action=close]")
         self.page.locator("[data-field=account]").fill("me@mail.com")
         self.assertEqual(self.page.locator("[data-field=password]").count(), 0)
+        expect(self.page.locator("#inspector [data-mode=excel]")).to_be_visible()
+        expect(self.page.locator("#inspector [data-mode=secret]")).to_have_count(0)
+        expect(self.page.locator("[data-name=password] option", has_text="Secret value of login_ui_test")).to_have_count(1)
+        expect(self.page.locator("#inspector summary").first).to_have_text("Specify the login form yourself")
+        self.page.locator(".tool[data-kind=login]").hover()
+        expect(self.page.locator("#tool-help")).to_contain_text("2 Fill blocks and 1 Click block")
+        self.page.locator("#flow-name").hover()
         self.page.select_option("[data-name=password]", "login_ui_test")
         expect(node).not_to_have_class(re.compile("invalid"))
         expect(node).to_contain_text("me@mail.com")
@@ -815,14 +822,17 @@ class SystemLogTests(AppTestCase):
         self.page.locator(".log-toggle:visible").click()
         expect(self.page.locator("#log-panel")).to_be_visible()
 
-    def test_log_button_sits_above_select_excel_and_clears(self):
+    def test_log_button_sits_in_the_corner_beside_the_side_panel_and_clears(self):
         self.page.click("#open-demo")
         expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
         button = self.page.locator(".log-toggle:visible").bounding_box()
-        excel = self.page.locator("#pick-excel").bounding_box()
-        self.assertLessEqual(button["y"] + button["height"], excel["y"])
-        self.assertLess(abs(button["x"] - excel["x"]), 40)
-        self.assertLess(excel["y"] - (button["y"] + button["height"]), 40)
+        canvas = self.page.locator("#canvas").bounding_box()
+        side_panel = self.page.locator("#inspector").bounding_box()
+        self.assertLessEqual(button["x"] + button["width"], side_panel["x"])
+        self.assertLess(side_panel["x"] - (button["x"] + button["width"]), 16)
+        self.assertLessEqual(button["y"] + button["height"], canvas["y"] + canvas["height"])
+        self.assertLess(canvas["y"] + canvas["height"] - (button["y"] + button["height"]), 16)
+        self.assertEqual(self.page.locator(".palette .log-toggle").count(), 0)
         self.shot("log_button")
 
         self.open_log()
@@ -952,6 +962,7 @@ class SetupAndSecurityTests(AppTestCase):
         self.assertEqual(flow["name"], "Login + Excel rows")
         self.assertEqual([step["do"] for step in flow["steps"]], ["goto", "login", "loop"])
         self.assertEqual(flow["steps"][1]["password"], "{{secret:your_password}}")
+        self.assertEqual(flow["steps"][1]["account"], "")
         self.assertEqual(flow["excel"]["required"], ["A", "B"])
         self.assertEqual([step["do"] for step in flow["steps"][-1]["steps"]], ["goto", "fill", "click"])
         # A blank block says what it is for, and its form opens without trouble.
@@ -1258,6 +1269,92 @@ class UndoRedoTests(AppTestCase):
         expect(self.page.locator("#undo")).to_be_disabled()
 
 
+class BrowserModeButtonTests(AppTestCase):
+    def tearDown(self):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/browser-mode?key={self.key}", method="PUT",
+            data=json.dumps({"mode": "visible"}).encode("utf-8"), headers={"Content-Type": "application/json"},
+        )
+        with NO_PROXY.open(request, timeout=10):
+            pass
+        super().tearDown()
+
+    def test_button_shows_the_current_mode_and_switches_through_all_three(self):
+        self.new_flow()
+        button = self.page.locator("#browser-mode")
+        expect(button).to_have_text("Browser: Visible")
+        self.assertLess(button.bounding_box()["x"], self.page.locator("#undo").bounding_box()["x"])
+        self.shot("browser_mode")
+        button.click()
+        expect(button).to_have_text("Browser: Offscreen")
+        button.click()
+        expect(button).to_have_text("Browser: Headless")
+        self.page.reload()
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Headless")
+        self.page.locator("#browser-mode").click()
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Visible")
+
+    def test_headless_refuses_a_manual_step_before_running(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator("[data-field=url]").fill(f"http://127.0.0.1:{self.port}/demo/login")
+        self.page.locator(".tool[data-kind=manual_pause]").click()
+        self.page.locator("#browser-mode").click()
+        self.page.locator("#browser-mode").click()
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Headless")
+        self.saved_flow()
+        self.page.click("#run-full")
+        expect(self.page.locator("#issues")).to_contain_text("needs a window")
+        expect(self.page.locator("[data-action=confirm-run]")).to_have_count(0)
+        self.page.click("[data-action=close]")
+        self.page.locator("#browser-mode").click()
+        self.page.click("#run-full")
+        expect(self.page.locator("[data-action=confirm-run]")).to_be_visible()
+        self.page.click("[data-action=cancel]")
+
+
+class OcrBlockUiTests(AppTestCase):
+    def test_block_points_at_an_image_and_saves_to_a_variable(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=ocr]").click()
+        node = self.page.locator("#canvas .node").first
+        expect(node).to_contain_text("Read OCR")
+        expect(node).to_have_class(re.compile("invalid"))
+        self.page.fill("#target-selector", "#captcha")
+        self.page.locator("[data-field=save_to_var]").fill("code")
+        self.page.select_option("#ocr-case", "upper")
+        expect(node).not_to_have_class(re.compile("invalid"))
+        self.shot("ocr_block")
+        step = self.saved_flow()["steps"][0]
+        self.assertEqual((step["save_to_var"], step["text_case"]), ("code", "upper"))
+        self.page.locator("#flow-name").hover()
+        self.page.locator(".tool[data-kind=ocr]").hover()
+        expect(self.page.locator("#tool-help")).to_contain_text("never saved")
+
+
+class ExcelNamePopupTests(AppTestCase):
+    def test_pointing_at_the_chosen_file_shows_its_full_path_and_leaving_removes_it(self):
+        self.page.click("#open-demo")
+        name = self.page.locator("#excel-name")
+        expect(name).to_contain_text("example_data.xlsx")
+        expect(self.page.locator("#tool-help")).to_have_count(0)
+        name.hover()
+        popup = self.page.locator("#tool-help")
+        expect(popup).to_contain_text("example_data.xlsx")
+        self.assertIn(str(Path(DATA) / "demo"), popup.inner_text())
+        self.assertIsNone(name.get_attribute("title"))
+        box = popup.bounding_box()
+        self.assertLessEqual(box["y"] + box["height"], self.page.viewport_size["height"])
+        self.shot("excel_popup")
+        self.page.locator("#flow-name").hover()
+        expect(popup).to_have_count(0)
+
+    def test_no_popup_without_a_file(self):
+        self.new_flow()
+        self.page.locator("#excel-name").hover()
+        expect(self.page.locator("#tool-help")).to_have_count(0)
+
+
 class BrandTests(AppTestCase):
     def test_author_is_shown_under_the_name(self):
         name = self.page.locator(".brand-name")
@@ -1270,7 +1367,7 @@ class BrandTests(AppTestCase):
 class BlockDelayTests(AppTestCase):
     def test_every_action_block_has_a_collapsed_empty_delay_at_the_end(self):
         self.new_flow()
-        for kind in ("goto", "login", "fill", "click", "select", "check", "read", "wait_for", "verify", "manual_pause"):
+        for kind in ("goto", "login", "fill", "click", "select", "check", "read", "ocr", "wait_for", "verify", "manual_pause"):
             self.page.locator(f".tool[data-kind={kind}]").click()
             details = self.page.locator("#delay-details")
             expect(details).to_be_visible()
@@ -1422,7 +1519,7 @@ class LanguageTests(AppTestCase):
             self.page.click(f"[data-tab={tab}]")
             check(f"tab {tab}")
         self.page.click("[data-tab=element]")
-        for kind in ("goto", "login", "click", "select", "check", "read", "wait_for", "wait", "verify", "manual_pause"):
+        for kind in ("goto", "login", "click", "select", "check", "read", "ocr", "wait_for", "wait", "verify", "manual_pause"):
             self.page.locator(f".tool[data-kind={kind}]").click()
             check(f"{kind} panel")
             # Pressing a block hides its help until the pointer comes back.

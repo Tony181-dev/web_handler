@@ -26,10 +26,11 @@ function valueField(editor, step, key, label, options) {
   const settings = options || {};
   const memoKey = `${step.id}.${key}`;
   const [found, name] = sourceOf(step[key]);
-  const mode = step[key] ? found : (editor.sourceModes[memoKey] || 'text');
+  // A flow saved earlier may hold a secret here. As text it shows what the run check complains about.
+  const mode = step[key] ? (found === 'secret' && settings.noSecret ? 'text' : found) : (editor.sourceModes[memoKey] || 'text');
   const modes = [['text', t('Text')], ['excel', t('Excel')]];
   if (key !== 'url') {
-    modes.push(['secret', t('Secret')]);
+    if (!settings.noSecret) modes.push(['secret', t('Secret')]);
     if (mode === 'variable' || editor.variableNames().length) modes.push(['variable', t('Variable')]);
   }
   const tabs = el('div.tabs', { role: 'tablist', 'aria-label': t('Data source') }, modes.map(([value, text]) => el('button', {
@@ -122,7 +123,7 @@ function namePane(editor, step, key, kind, name, names) {
     },
   },
   el('option', { value: '', text: t('Choose...'), selected: !name }),
-  known.map(item => el('option', { value: item, text: item, selected: item === name })),
+  known.map(item => el('option', { value: item, text: kind === 'secret' ? t('Secret value of {name}', { name: item }) : item, selected: item === name })),
   kind === 'secret' ? el('option', { value: '__manage', text: t('Manage secrets...') }) : null);
   return select;
 }
@@ -183,12 +184,12 @@ const STEP_FORMS = {
     }));
   },
   login(panel, editor, step) {
-    panel.append(valueField(editor, step, 'account', t('Account')));
+    panel.append(valueField(editor, step, 'account', t('Account'), { noSecret: true }));
     const [, secret] = sourceOf(step.password);
     panel.append(field(t('Password'), namePane(editor, step, 'password', 'secret', secret, editor.secretNames),
       t('Chosen from Secrets, so the password stays out of the flow file.')));
     const finding = ['account', 'password', 'submit'].map(name => textField(editor, step, `${name}_selector`, t(LOGIN_SELECTOR_LABELS[name]), { mono: true }));
-    panel.append(el('details', null, el('summary', { text: t('Find the form by hand') }),
+    panel.append(el('details', null, el('summary', { text: t('Specify the login form yourself') }),
       el('div.hint', { text: t('Leave empty and the tool finds the form by itself. Fill in only if it finds the wrong one.'), style: 'margin:6px 0' }),
       finding));
   },
@@ -255,6 +256,18 @@ const STEP_FORMS = {
     panel.append(field(t('Where to save'), select));
     draw(mode);
     panel.append(holder);
+  },
+  ocr(panel, editor, step) {
+    STEP_FORMS.read(panel, editor, step);
+    const select = el('select', {
+      id: 'ocr-case',
+      onchange: () => {
+        if (select.value) step.text_case = select.value;
+        else delete step.text_case;
+        editor.changedQuietly();
+      },
+    }, [['', t('As read')], ['upper', t('UPPERCASE')], ['lower', t('lowercase')]].map(([value, text]) => el('option', { value, text, selected: (step.text_case || '') === value })));
+    panel.append(field(t('Letter case'), select, t('Point this block at the picture, then use the variable in a Fill block. Hard pictures can be read wrongly: use a Manual step for those.')));
   },
   wait_for(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -414,7 +427,7 @@ function elementSummary(editor, step, info) {
   box.append(el('div.row.wrap', { style: 'margin-bottom:6px' },
     el('span.badge.neutral', { text: t('Suggested: {name}', { name: STEP_NAMES[info.action] }) }),
     known ? el(info.match_count === 1 ? 'span.badge.ok' : 'span.badge.bad', { text: t('Matched {count} element(s)', { count: info.match_count }) }) : el('span.badge.neutral', { text: t('Matches: unknown') }),
-    info.action !== step.do && step.do !== 'read' && step.do !== 'verify' && step.do !== 'wait_for'
+    info.action !== step.do && step.do !== 'read' && step.do !== 'ocr' && step.do !== 'verify' && step.do !== 'wait_for'
       ? el('button.btn.small', {
         id: 'switch-action',
         text: t('Change to {name}', { name: STEP_NAMES[info.action] }),

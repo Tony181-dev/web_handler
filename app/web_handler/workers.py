@@ -17,6 +17,7 @@ class WorkerSession:
         self.on_exit = None
         self.finished = threading.Event()
         self.output_tail = []
+        self.job_handle = None
 
     def start(self):
         self.process = subprocess.Popen(
@@ -27,7 +28,7 @@ class WorkerSession:
             encoding="utf-8", errors="replace", bufsize=1,
         )
         # Before the job is sent, so whatever the worker starts is covered too.
-        child_processes.adopt(self.process)
+        self.job_handle = child_processes.adopt(self.process)
         self.send({**self.job, "language": i18n.language()})
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -52,6 +53,9 @@ class WorkerSession:
             elif line.strip():
                 self.output_tail = (self.output_tail + [line])[-20:]
         self.process.wait()
+        if self.job_handle:
+            child_processes.release_job(self.job_handle)
+            self.job_handle = None
         if self.on_exit:
             self.on_exit(self.process.returncode)
         self.finished.set()
@@ -65,7 +69,8 @@ class WorkerSession:
     def kill(self):
         if not self.alive():
             return
-        subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(self.process.pid)],
-            capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        job = self.job_handle
+        if job:
+            child_processes.end_job(job)
+        else:
+            self.process.kill()

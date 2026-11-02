@@ -53,20 +53,22 @@ def run_with_timeout(cmd, timeout, env=None):
             )
         except OSError as error:
             return None, str(error), False
-        child_processes.adopt(process)
+        job = child_processes.adopt(process)
         timed_out = False
         try:
             process.wait(timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
-            )
+            if job:
+                child_processes.end_job(job)
+            else:
+                process.kill()
             try:
                 process.wait(15)
             except subprocess.TimeoutExpired:
                 process.kill()
+        if job:
+            child_processes.release_job(job)
         output.seek(0)
         return process.returncode, output.read().decode("utf-8", "replace"), timed_out
 

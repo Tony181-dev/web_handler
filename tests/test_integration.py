@@ -381,13 +381,40 @@ class DemoFlowTests(IntegrationBase):
         self.assertIn(6, self.statuses(events))
 
 
+class OcrBlockTests(IntegrationBase):
+    def ocr_flow(self, selector="#captcha"):
+        flow, _ = self.demo_files()
+        target = {"primary": selector, "fallbacks": [], "frames": [], "verified": True}
+        box = {"primary": "#note", "fallbacks": [], "frames": [], "verified": True}
+        flow = {"name": "t", "settings": {"step_timeout_seconds": 5, "navigation_timeout_seconds": 20}, "steps": flow["steps"][:5]}
+        flow["steps"] += [
+            {"id": "a", "do": "goto", "url": f"{self.base}/demo/playground"},
+            {"id": "b", "do": "ocr", "target": target, "save_to_var": "code", "text_case": "upper"},
+            {"id": "c", "do": "fill", "target": box, "value": "{{var:code}}"},
+            {"id": "d", "do": "verify", "target": box, "equals": demo_site.DEMO_CAPTCHA},
+        ]
+        return flow
+
+    def test_reads_the_image_on_the_page_and_saves_no_file(self):
+        events, run_dir = self.run_job(self.ocr_flow())
+        self.assertEqual(events[-1]["outcome"], "finished", events[-1])
+        self.assertEqual([path.name for path in run_dir.rglob("*") if path.suffix in (".png", ".jpg", ".jpeg")], [])
+        temporary = [path.name for path in paths.data_dir().glob("*") if path.suffix in (".png", ".jpg", ".jpeg")]
+        self.assertEqual(temporary, [])
+
+    def test_missing_image_fails_the_block(self):
+        events, _ = self.run_job(self.ocr_flow("#no-such-image"))
+        self.assertEqual(events[-1]["outcome"], "failed")
+        self.assertIn("no-such-image", events[-1]["message"])
+
+
 class LoginBlockTests(IntegrationBase):
     def login_flow(self, password="{{secret:demo_password}}", **fields):
         return {
             "name": "t", "settings": {"step_timeout_seconds": 3, "navigation_timeout_seconds": 20},
             "steps": [
                 {"id": "a", "do": "goto", "url": f"{self.base}/demo/login"},
-                {"id": "b", "do": "login", "account": "{{secret:demo_user}}", "password": password, **fields},
+                {"id": "b", "do": "login", "account": demo_site.DEMO_USER, "password": password, **fields},
                 {"id": "c", "do": "verify", "url_contains": "/demo/items"},
             ],
         }
@@ -414,7 +441,7 @@ class LoginBlockTests(IntegrationBase):
         flow = self.login_flow()
         flow["steps"] += [
             {"id": "d", "do": "goto", "url": f"{self.base}/demo/items"},
-            {"id": "e", "do": "login", "account": "{{secret:demo_user}}", "password": "{{secret:demo_password}}"},
+            {"id": "e", "do": "login", "account": demo_site.DEMO_USER, "password": "{{secret:demo_password}}"},
             {"id": "f", "do": "verify", "url_contains": "/demo/items"},
         ]
         events, _ = self.run_job(flow)

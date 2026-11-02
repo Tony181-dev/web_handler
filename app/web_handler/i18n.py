@@ -4,28 +4,19 @@ The chosen language is saved in the data folder. Workers are told it when they s
 """
 import json
 
-from . import paths
+from . import paths, settings
 
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = ("en", "vi")
-SETTINGS_FILE = "settings.json"
 
 _current = None
 _tables = {DEFAULT_LANGUAGE: {}}
 
 
-def _read_settings():
-    try:
-        settings = json.loads((paths.data_dir() / SETTINGS_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return settings if isinstance(settings, dict) else {}
-
-
 def language():
     global _current
     if _current is None:
-        saved = _read_settings().get("language")
+        saved = settings.read().get("language")
         _current = saved if saved in LANGUAGES else DEFAULT_LANGUAGE
     return _current
 
@@ -39,11 +30,7 @@ def use(chosen):
 def save(chosen):
     if chosen not in LANGUAGES:
         raise ValueError(t("Unknown language."))
-    settings = _read_settings()
-    settings["language"] = chosen
-    folder = paths.data_dir()
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / SETTINGS_FILE).write_text(json.dumps(settings, ensure_ascii=False), encoding="utf-8")
+    settings.update(language=chosen)
     use(chosen)
 
 

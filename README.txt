@@ -34,8 +34,8 @@ KEEPING YOUR DATA SAFE
 - "Check on live page" really runs the blocks before it, with the first Excel row. Only the block being checked is not carried out.
 - The "Log" button shows the system log. The log holds no passwords or filled-in values, and lives in the data folder.
 - The data folder holds your flows, error screenshots and login sessions. Do not send that folder to anyone.
-- The tool does not get past captchas or MFA. Use a "Manual step" block for those.
-- Make sure the rules of the system you use allow automation before using this tool.
+- The "Read OCR" block can read a simple captcha, and it can read it wrongly. It works on this machine: pictures are not saved or sent anywhere. For MFA and hard captchas, use a "Manual step" block.
+- Make sure the rules of the system you use allow automation, including reading captchas, before using this tool.
 
 SHARING IT WITH SOMEONE
 Double-click Build.bat in the source folder. It needs internet the first time, Python 3 and Inno Setup 6.
