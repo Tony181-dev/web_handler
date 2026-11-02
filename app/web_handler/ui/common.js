@@ -185,7 +185,7 @@ const PALETTE = ['goto', 'login', 'fill', 'click', 'select', 'check', 'read', 'o
 const DEFAULT_WAIT_SECONDS = 3;
 const STEP_HELP = {
   goto: 'Opens a web address in the browser. The address can be typed in or come from an Excel column.',
-  login: 'Logs in on the open page: finds the login form, fills in the account and password, and sends it. The block fails if the form is still there afterwards. If this block does not work in some cases, you can use 2 Fill blocks and 1 Click block instead.',
+  login: 'Logs in on the open page: finds the login form, fills in the account and password, and sends it. The block fails if the form is still there afterwards. If this block does not work in some cases, you can use 2 "Fill" blocks and 1 "Click" block instead.',
   fill: 'Fills a value into a box on the page. The value can be: text you type in, the value of each cell in an Excel column, a saved Secret, or a Variable.',
   click: 'Clicks a button or link on the page. Tick the option to wait if the click opens another page.',
   select: 'Picks an option from a dropdown list by the text it shows.',

@@ -169,7 +169,7 @@ class App:
         issues = flow_module.validate(flow, context)
         result = issues.as_dict()
         if app_settings.browser_mode() == app_settings.BROWSER_HEADLESS and any(step.get("do") == "manual_pause" for step, _ in flow_module.walk(flow)):
-            result["errors"].append({"step": None, "message": t("A Manual step block needs a window. Switch the browser to Visible or Offscreen.")})
+            result["errors"].append({"step": None, "message": t('A "Manual step" block needs a window. Switch the browser to Visible or Offscreen.')})
         loop = flow_module.find_loop(flow)
         settings = flow.get("excel") or {}
         mode = body.get("mode", "full")

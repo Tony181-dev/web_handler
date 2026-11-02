@@ -2,15 +2,20 @@
 
 The chosen language is saved in the data folder. Workers are told it when they start.
 """
+import functools
 import json
+import re
 
 from . import paths, settings
 
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = ("en", "vi")
+# A {name} to fill in, but not the {{row}} kept for the person.
+PLACEHOLDER = re.compile(r"(?<!\{)\{(\w+)\}(?!\})")
 
 _current = None
 _tables = {DEFAULT_LANGUAGE: {}}
+_patterns = None
 
 
 def language():
@@ -47,3 +52,64 @@ def t(text, **values):
     for name, value in values.items():
         result = result.replace("{" + name + "}", str(value))
     return result
+
+
+def _sentence_patterns():
+    """Every sentence, as written in each language, as a pattern giving back its English text and values."""
+    global _patterns
+    if _patterns is None:
+        found = []
+        for chosen in LANGUAGES:
+            if chosen == DEFAULT_LANGUAGE:
+                continue
+            for english, translated in _table(chosen).items():
+                for written in {english, translated}:
+                    parts = PLACEHOLDER.split(written)
+                    literal = "".join(parts[0::2])
+                    # A sentence with no words of its own, such as "{label}: {error}", would match anything.
+                    if not parts[1::2] or not re.search(r"[^\W\d_]", literal):
+                        continue
+                    pattern = "".join(
+                        re.escape(part) if index % 2 == 0 else "(.+?)" for index, part in enumerate(parts)
+                    )
+                    found.append((len(literal), re.compile(pattern, re.DOTALL), parts[1::2], english))
+        found.sort(key=lambda item: -item[0])
+        _patterns = found
+    return _patterns
+
+
+@functools.cache
+def _whole_sentences():
+    """Each sentence as written in any language, to its English text."""
+    known = {}
+    for chosen in LANGUAGES[1:]:
+        for english, translated in _table(chosen).items():
+            known[translated] = english
+            known[english] = english
+    return known
+
+
+@functools.lru_cache(maxsize=4096)
+def _retranslate(text, chosen):
+    # `chosen` only keeps answers for one language apart from those for another.
+    english = _whole_sentences().get(text)
+    if english is not None:
+        return t(english)
+    for _, pattern, names, english in _sentence_patterns():
+        match = pattern.fullmatch(text)
+        if match:
+            return t(english, **{name: retranslate(value) for name, value in zip(names, match.groups())})
+    head, separator, tail = text.partition(": ")
+    if separator and head and tail:
+        return f"{retranslate(head)}: {retranslate(tail)}"
+    return text
+
+
+def retranslate(text):
+    """A message saved in any language, such as in the log of an earlier run, in the current language.
+
+    Text that is not one of the app's sentences, such as an element name or a value, stays as it is.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return text
+    return _retranslate(text, language())

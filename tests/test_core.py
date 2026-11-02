@@ -637,7 +637,7 @@ class LoginValidationTests(unittest.TestCase):
         self.assertEqual(self.errors_for(account="me@mail.com", password="{{secret:pw}}"), [])
 
     def test_account_is_required(self):
-        self.assertEqual(self.errors_for(account="", password="{{secret:pw}}"), ["The Login block has no account."])
+        self.assertEqual(self.errors_for(account="", password="{{secret:pw}}"), ['The "Login" block has no account.'])
 
     def test_account_cannot_be_a_secret_because_it_shows_on_the_page(self):
         for account in ("{{secret:me}}", "x{{secret:me}}"):
@@ -646,7 +646,7 @@ class LoginValidationTests(unittest.TestCase):
                 self.assertTrue(any("cannot be a secret" in item for item in errors), errors)
 
     def test_password_is_required(self):
-        self.assertEqual(self.errors_for(account="me", password=""), ["The Login block has no password."])
+        self.assertEqual(self.errors_for(account="me", password=""), ['The "Login" block has no password.'])
 
     def test_typed_password_is_refused_so_it_stays_out_of_the_flow_file(self):
         for password in ("plain", "x{{secret:pw}}", "{{A}}"):
@@ -712,6 +712,28 @@ class BrowserModeTests(unittest.TestCase):
                 self.assertEqual(settings.browser_mode(), "offscreen")
 
 
+class SavedMessageLanguageTests(unittest.TestCase):
+    def tearDown(self):
+        i18n.use(None)
+
+    def test_a_message_saved_in_vietnamese_shows_in_english(self):
+        i18n.use("en")
+        self.assertEqual(i18n.retranslate("Thiếu giá trị ở cột C"), "Missing a value in column C")
+        self.assertEqual(
+            i18n.retranslate("Verify #a: Không tìm thấy phần tử #a sau 10 giây."),
+            "Verify #a: Element #a was not found after 10 s.",
+        )
+
+    def test_a_message_saved_in_english_shows_in_vietnamese(self):
+        i18n.use("vi")
+        self.assertEqual(i18n.retranslate("Missing a value in column C"), "Thiếu giá trị ở cột C")
+
+    def test_text_that_is_not_a_sentence_of_the_app_stays(self):
+        i18n.use("en")
+        self.assertEqual(i18n.retranslate("#view-summary"), "#view-summary")
+        self.assertEqual(i18n.retranslate(""), "")
+
+
 class DroppedConnectionTests(unittest.TestCase):
     def report(self, error):
         quiet = server.Server.__new__(server.Server)
@@ -742,13 +764,13 @@ class OcrValidationTests(unittest.TestCase):
         return [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
 
     def test_needs_a_place_to_save(self):
-        self.assertEqual(self.errors_for(), ["The Read OCR block has no place to save to."])
+        self.assertEqual(self.errors_for(), ['The "Read OCR" block has no place to save to.'])
         self.assertEqual(self.errors_for(save_to_var="code"), [])
 
     def test_needs_an_element(self):
         step = {"id": "s1", "do": "ocr", "save_to_var": "code", "target": target("")}
         errors = [item["message"] for item in flow_module.validate({"steps": [step]}).errors]
-        self.assertEqual(errors, ["The Read OCR block has no element."])
+        self.assertEqual(errors, ['The "Read OCR" block has no element.'])
 
     def test_its_variable_can_be_used_later(self):
         flow = {"steps": [
@@ -823,7 +845,7 @@ class WaitValidationTests(unittest.TestCase):
     def test_missing_or_non_positive_seconds_are_rejected(self):
         for seconds in (None, 0, -1, "3", True):
             with self.subTest(seconds=seconds):
-                self.assertEqual(self.errors_for(seconds), ["The Wait block needs a number of seconds above 0."])
+                self.assertEqual(self.errors_for(seconds), ['The "Wait" block needs a number of seconds above 0.'])
 
 
 class FlowTemplateTests(unittest.TestCase):

@@ -9,7 +9,7 @@ const PASSWORD_SAVE_DELAY_MS = 300;
 const BROWSER_MODES = {
   visible: ['Browser: Visible', 'Run and Run once open the window and bring it to the front.'],
   offscreen: ['Browser: Offscreen', 'Run and Run once keep the window in the taskbar. Click it there to see it.'],
-  headless: ['Browser: Headless', 'Run and Run once have no window at all. A Manual step block cannot be used.'],
+  headless: ['Browser: Headless', 'Run and Run once have no window at all. A "Manual step" block cannot be used.'],
 };
 
 class FlowEditor {

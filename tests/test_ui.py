@@ -378,7 +378,7 @@ class BuilderTests(AppTestCase):
         expect(self.page.locator("#inspector [data-mode=secret]")).to_have_count(0)
         expect(self.page.locator("#inspector summary").first).to_have_text("Specify the login form yourself")
         self.page.locator(".tool[data-kind=login]").hover()
-        expect(self.page.locator("#tool-help")).to_contain_text("2 Fill blocks and 1 Click block")
+        expect(self.page.locator("#tool-help")).to_contain_text('2 "Fill" blocks and 1 "Click" block')
         self.page.locator("#flow-name").hover()
         self.page.click("[data-password-mode=secret]")
         self.page.select_option("[data-name=password]", "login_ui_test")

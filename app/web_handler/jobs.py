@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import flow as flow_module, paths, runner, settings
+from . import flow as flow_module, i18n, paths, runner, settings
 from .i18n import t
 from .workers import WorkerSession
 
@@ -246,7 +246,7 @@ class JobManager:
         run = self.runs.get(run_id)
         running = bool(run and run.session and run.session.alive())
         return {
-            **meta, "counts": counts, "running": running,
+            **meta, "message": i18n.retranslate(meta.get("message", "")), "counts": counts, "running": running,
             "rows": [
                 {"row": row, "status": status, "message": state.messages.get(row, "")}
                 for row, status in sorted(state.statuses.items())

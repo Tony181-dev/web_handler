@@ -357,11 +357,11 @@ class ChromeDriver:
             try:
                 if kind == "fill":
                     if not locator.evaluate(f"el => el.matches('{FILLABLE}')"):
-                        return t("This element is not an input, so the Fill block cannot fill it.")
+                        return t('This element is not an input, so the "Fill" block cannot fill it.')
                     if not locator.is_editable(timeout=TRIAL_TIMEOUT_MS):
-                        return t("This field is locked, so the Fill block cannot fill it.")
+                        return t('This field is locked, so the "Fill" block cannot fill it.')
                 elif kind == "select" and not locator.evaluate("el => el.tagName === 'SELECT'"):
-                    return t("This element is not a dropdown, so the Select block cannot use it.")
+                    return t('This element is not a dropdown, so the "Select" block cannot use it.')
                 if kind == "click":
                     locator.click(trial=True, timeout=TRIAL_TIMEOUT_MS)
                 elif kind == "check":

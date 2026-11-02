@@ -235,12 +235,12 @@ class Recorder:
         self.last_action = self.clock()
         self.last_action_page = page
         if kind == "submit":
-            message = t("The form was sent with the Enter key, without a button. Add a Click block if needed.")
+            message = t('The form was sent with the Enter key, without a button. Add a "Click" block if needed.')
             self.warnings.append(message)
             self.emit({"type": "recorder_warning", "text": message})
             return
         if kind == "file":
-            message = t("Choosing a file cannot be recorded. Do this part with a Manual step block.")
+            message = t('Choosing a file cannot be recorded. Do this part with a "Manual step" block.')
             self.warnings.append(message)
             self.emit({"type": "recorder_warning", "text": message})
             return

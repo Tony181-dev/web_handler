@@ -156,37 +156,37 @@ def _check_step_fields(step, issues):
     name = t(STEP_NAMES[kind])
     delay = step.get("delay_after")
     if delay is not None and (isinstance(delay, bool) or not isinstance(delay, (int, float)) or delay <= 0):
-        issues.error(t("The delay of the {name} block must be a number of seconds above 0.", name=name), step)
+        issues.error(t('The delay of the "{name}" block must be a number of seconds above 0.', name=name), step)
     if kind == "goto" and not (step.get("url") or "").strip():
-        issues.error(t("The {name} block has no link.", name=name), step)
+        issues.error(t('The "{name}" block has no link.', name=name), step)
     if kind in TARGET_STEPS and not ((step.get("target") or {}).get("primary") or "").strip():
-        issues.error(t("The {name} block has no element.", name=name), step)
+        issues.error(t('The "{name}" block has no element.', name=name), step)
     if kind == "login":
         password = step.get("password") or ""
         account = step.get("account") or ""
         if not account.strip():
-            issues.error(t("The {name} block has no account.", name=name), step)
+            issues.error(t('The "{name}" block has no account.', name=name), step)
         elif any(source == "secret" for source, _ in _safe_references(account)):
-            issues.error(t("The account of the {name} block cannot be a secret, as it shows on the page. Type it in or take it from Excel.", name=name), step)
+            issues.error(t('The account of the "{name}" block cannot be a secret, as it shows on the page. Type it in or take it from Excel.', name=name), step)
         if not password:
-            issues.error(t("The {name} block has no password.", name=name), step)
+            issues.error(t('The "{name}" block has no password.', name=name), step)
         elif not WHOLE_SECRET.match(password):
-            issues.error(t("The password of the {name} block must be a saved secret, so it stays out of the flow file.", name=name), step)
+            issues.error(t('The password of the "{name}" block must be a saved secret, so it stays out of the flow file.', name=name), step)
     if kind in ("fill", "select") and step.get("value") in (None, ""):
-        issues.error(t("The {name} block has no value.", name=name), step)
+        issues.error(t('The "{name}" block has no value.', name=name), step)
     if kind in READING_STEPS and not (step.get("save_to_var") or step.get("save_to_column")):
-        issues.error(t("The {name} block has no place to save to.", name=name), step)
+        issues.error(t('The "{name}" block has no place to save to.', name=name), step)
     if kind == "wait":
         seconds = step.get("seconds")
         if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds <= 0:
-            issues.error(t("The {name} block needs a number of seconds above 0.", name=name), step)
+            issues.error(t('The "{name}" block needs a number of seconds above 0.', name=name), step)
     if kind == "verify":
         checks_url = step.get("url_contains") or step.get("url_not_contains")
         checks_element = step.get("equals") not in (None, "") or step.get("contains") not in (None, "")
         if not checks_url and not checks_element:
-            issues.error(t("The {name} block has no condition.", name=name), step)
+            issues.error(t('The "{name}" block has no condition.', name=name), step)
         if checks_element and not ((step.get("target") or {}).get("primary") or "").strip():
-            issues.error(t("The {name} block has no element.", name=name), step)
+            issues.error(t('The "{name}" block has no element.', name=name), step)
 
 
 def validate(flow, context=None):

@@ -327,7 +327,7 @@ const STEP_FORMS = {
         editor.changedQuietly();
       },
     }, [['', t('As read')], ['upper', t('UPPERCASE')], ['lower', t('lowercase')]].map(([value, text]) => el('option', { value, text, selected: (step.text_case || '') === value })));
-    panel.append(field(t('Letter case'), select, t('Point this block at the picture, then use the variable in a Fill block. Hard pictures can be read wrongly: use a Manual step for those.')));
+    panel.append(field(t('Letter case'), select, t('Point this block at the picture, then use the variable in a "Fill" block. Hard pictures can be read wrongly: use a "Manual step" block for those.')));
   },
   wait_for(panel, editor, step) {
     panel.append(targetEditor(editor, step));
@@ -635,7 +635,7 @@ async function inspectAtBlock(editor, step, command) {
   if (position >= 0) {
     editor.failedStep = before[position].id;
     renderCanvas(editor);
-    return { error: t('Block {position} ({name}) is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[before[position].do] }) };
+    return { error: t('Block {position} ("{name}") is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[before[position].do] }) };
   }
   const unapproved = before.filter(item => ['login', 'click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
   if (unapproved.length) {
@@ -724,7 +724,7 @@ function checkResultNode(response) {
   if (response.error) return banner('bad', response.error);
   if (response.problem) return banner('bad', response.problem);
   if (response.count === 1) return banner('ok', t('Reached the page and matched exactly 1 element, outlined in red in Chrome. The action can be done.'));
-  const hint = response.no_link && response.count === 0 ? t(' There is no Open link block before this, so the tool looked on the open page.') : '';
+  const hint = response.no_link && response.count === 0 ? t(' There is no "Open link" block before this, so the tool looked on the open page.') : '';
   return banner('bad', t('Matched {count} element(s).', { count: response.count }) + hint);
 }
 

@@ -211,6 +211,12 @@ python tools/build_package.py
 - Chế độ `Browser: Visible` trước đây mở Chrome nằm sau cửa sổ đang dùng, trông như bị ẩn, vì Windows không cho chương trình chạy nền tự đưa cửa sổ lên trước. Giờ app tự đặt cửa sổ Chrome lên trên cùng mà không lấy bàn phím của người dùng. Áp dụng cho Run, Run once, ghi thao tác và khối `Manual step`. Chế độ offscreen vẫn thu nhỏ xuống thanh tác vụ.
 - Không còn in lỗi `ConnectionAbortedError` (WinError 10053) ra cửa sổ console. Lỗi này chỉ xảy ra khi trang giao diện ngắt kết nối giữa chừng, ví dụ tải lại trang hoặc đóng tab, và vô hại.
 
+### Sau 0.1.14, đã commit nhưng chưa build bộ cài
+- Xóa một bí mật thì khung chọn bí mật cập nhật ngay, không cần F5.
+- Mẫu quy trình `Read into Excel` có tên tiếng Việt là "Lấy giá trị đưa vào Excel". Tên dài trong hộp + Quy trình mới xuống dòng trong nút, không tràn ra ngoài.
+- Tên riêng của khối trong các câu thông báo nằm trong nháy kép, ví dụ khối "Điền", ở cả hai ngôn ngữ.
+- Nhật ký các lần chạy được lưu bằng ngôn ngữ lúc chạy. Khi xem lại, thông báo được dịch sang ngôn ngữ đang dùng (`i18n.retranslate`). Phần không phải câu của app, như tên phần tử hay giá trị, giữ nguyên.
+
 ## File chính
 
 Toàn bộ nằm trong `web_handler/`.

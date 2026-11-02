@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 
 from . import flow as flow_module
-from . import templating
+from . import i18n, templating
 from .browser_errors import BrowserClosed
 from .i18n import t
 
@@ -74,7 +74,8 @@ def load_journal(path):
         elif kind == "row_end":
             started.discard(record["row"])
             state.statuses[record["row"]] = OLD_STATUSES.get(record["status"], record["status"])
-            state.messages[record["row"]] = record.get("message", "")
+            # Saved in the language of that run, which may not be the one in use now.
+            state.messages[record["row"]] = i18n.retranslate(record.get("message", ""))
             state.written[record["row"]] = record.get("written", {})
         elif kind == "finish":
             state.finished = True
