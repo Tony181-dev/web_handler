@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 import sys
@@ -709,6 +710,25 @@ class BrowserModeTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     settings.save_browser_mode("sideways")
                 self.assertEqual(settings.browser_mode(), "offscreen")
+
+
+class DroppedConnectionTests(unittest.TestCase):
+    def report(self, error):
+        quiet = server.Server.__new__(server.Server)
+        captured = io.StringIO()
+        with unittest.mock.patch("sys.stderr", captured):
+            try:
+                raise error
+            except Exception:
+                quiet.handle_error(None, ("127.0.0.1", 1))
+        return captured.getvalue()
+
+    def test_a_page_that_went_away_is_not_reported(self):
+        self.assertEqual(self.report(ConnectionAbortedError(10053, "aborted")), "")
+        self.assertEqual(self.report(ConnectionResetError(10054, "reset")), "")
+
+    def test_other_errors_are_still_reported(self):
+        self.assertIn("ValueError", self.report(ValueError("real problem")))
 
 
 class VersionOnDiskTests(unittest.TestCase):

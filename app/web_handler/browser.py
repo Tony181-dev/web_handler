@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import time
 
-from . import ocr, paths, settings, setup_checks
+from . import desktop, ocr, paths, settings, setup_checks
 from .browser_errors import BrowserClosed, ElementError
 from .i18n import t
 
@@ -107,6 +107,11 @@ class ChromeDriver:
             return
         self._set_window_state("normal")
         self._guard(self.page.bring_to_front)
+        try:
+            desktop.raise_browser_windows()
+        except Exception:
+            # Only about where the window sits, which must never stop a run.
+            pass
 
     def _on_page(self, page):
         # A click that opens a new window continues in that window, as a person would.

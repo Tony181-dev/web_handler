@@ -1,6 +1,6 @@
 # Web Handler: ghi chú dự án
 
-Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.13**.
+Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.14**.
 
 Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
 
@@ -8,7 +8,7 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 
 | Hạng mục | Tình trạng |
 |---|---|
-| App, bộ cài exe và file zip 0.1.13 | Xong |
+| App, bộ cài exe và file zip 0.1.14 | Xong |
 | Test tự động của app | 254/254 đạt (`test_i18n` 19, `test_core` 86, `test_html_reader` 18, `test_shutdown` 9, `test_integration` 29, `test_ui` 93) |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
@@ -19,8 +19,8 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 ## Cách chạy
 
 - Bản đang dùng: bấm đúp `web_handler/dist/WebHandler/Start.bat`. Giữ cửa sổ đó mở, đóng nó là tắt app.
-- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.13.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
-- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.13.zip`, bấm đúp `Install.bat`.
+- Cài bằng bộ cài: chạy `web_handler/dist/WebHandler-Setup-0.1.14.exe`. Cài cho riêng người dùng vào `%LOCALAPPDATA%\Programs\WebHandler`, không cần admin hay mạng.
+- Cài bằng script, khi công ty chặn exe: giải nén `web_handler/dist/WebHandler-0.1.14.zip`, bấm đúp `Install.bat`.
 - Không cài: giải nén zip vào nơi có quyền ghi, không dùng thư mục Temp, chạy `Start.bat`, bấm `Install missing`, rồi `Open app`.
 - Dữ liệu nằm trong thư mục `data` của từng nơi cài. Muốn dùng quy trình cũ ở bản cài mới thì đóng app rồi chép thư mục `data` sang.
 - Thử nhanh: bấm `Open sample flow`, rồi `▶ Run`.
@@ -207,6 +207,10 @@ python tools/build_package.py
 - Sửa logic ghi thao tác: sửa cùng một ô nhiều lần chỉ còn một khối `Fill` với giá trị cuối. Ô đang gõ dở khi bấm `Stop recording` vẫn được ghi, ô chỉ bấm vào mà chưa gõ thì không. Link mở tab mới không còn bị đánh dấu chờ chuyển trang và không sinh khối `Open link` cho tab mới. Bấm vào chữ thường, tiêu đề hay chỗ trống không còn sinh khối `Click`: chỉ ghi khi bấm vào nút, link, phần tử có vai trò tương tác hoặc có con trỏ hình bàn tay.
 - Đã kiểm tra và không phải lỗi: đăng nhập bằng phím Enter vẫn ghi lại cú bấm nút đăng nhập, vì trình duyệt tự bấm nút mặc định của form.
 
+### 0.1.14
+- Chế độ `Browser: Visible` trước đây mở Chrome nằm sau cửa sổ đang dùng, trông như bị ẩn, vì Windows không cho chương trình chạy nền tự đưa cửa sổ lên trước. Giờ app tự đặt cửa sổ Chrome lên trên cùng mà không lấy bàn phím của người dùng. Áp dụng cho Run, Run once, ghi thao tác và khối `Manual step`. Chế độ offscreen vẫn thu nhỏ xuống thanh tác vụ.
+- Không còn in lỗi `ConnectionAbortedError` (WinError 10053) ra cửa sổ console. Lỗi này chỉ xảy ra khi trang giao diện ngắt kết nối giữa chừng, ví dụ tải lại trang hoặc đóng tab, và vô hại.
+
 ## File chính
 
 Toàn bộ nằm trong `web_handler/`.
@@ -219,6 +223,7 @@ Toàn bộ nằm trong `web_handler/`.
 | `app/web_handler/jobs.py`, `workers.py`, `worker.py` | Quản lý và chạy tiến trình làm việc với trình duyệt |
 | `app/web_handler/child_processes.py` | Job Object để tiến trình con tắt theo app, tắt đúng một tiến trình |
 | `app/web_handler/runner.py`, `browser.py`, `browser_errors.py` | Chạy từng khối, điều khiển trình duyệt |
+| `app/web_handler/desktop.py` | Đặt cửa sổ Chrome của app lên trên cùng ở chế độ visible |
 | `app/web_handler/i18n.py`, `ui/lang/vi.json` | Chọn ngôn ngữ, hàm `t`, bản dịch tiếng Việt |
 | `app/web_handler/flow.py`, `templating.py` | File quy trình, kiểm tra trước khi chạy, mẫu `{{...}}` |
 | `app/web_handler/flow_templates.py` | Các mẫu quy trình trong hộp `New flow` |
@@ -233,13 +238,13 @@ Toàn bộ nằm trong `web_handler/`.
 | `tests/` | `test_i18n.py`, `test_core.py`, `test_html_reader.py`, `test_shutdown.py`, `test_integration.py`, `test_ui.py`, `test_probe.py` |
 | `tools/` | `build_package.py`, `installer.iss`, `build_probe.py`, các file requirements |
 | `probe/` | Công cụ dò khả năng chạy trên máy công ty |
-| `dist/` | `WebHandler-Setup-0.1.13.exe`, `WebHandler-0.1.13.zip`, các bản 0.1.3 đến 0.1.12, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
+| `dist/` | `WebHandler-Setup-0.1.14.exe`, `WebHandler-0.1.14.zip`, các bản 0.1.3 đến 0.1.13, thư mục `WebHandlerProbe/`, và bản đang dùng `WebHandler/`. Các zip bản cũ không còn trong thư mục này |
 
 Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-handler-design.md`, kế hoạch trong `plans/`.
 
 ## Chưa kiểm chứng và lưu ý
 
-- **Máy công ty và hệ thống thật:** chưa thử, chưa có `probe_report.txt`. Nếu công ty chặn Playwright thì phải viết lại `browser.py` và xem lại chế độ ghi.
+- **Máy công ty và hệ thống thật:** ngày 2026-11-02 log người dùng gửi cho thấy bộ cài đã cài và chạy được trên một máy khác (`C:\Users\hoang6.nguyen\...`), và từ đó phát hiện lỗi cửa sổ ở chế độ visible. Vẫn chưa có `probe_report.txt`. Nếu công ty chặn Playwright thì phải viết lại `browser.py` và xem lại chế độ ghi.
 - **Thao tác tay của người thật:** hộp thoại `Select Excel` và nút `Open result file` chưa được chạy thử. Chế độ ghi mới được test bằng thao tác tự động.
 - **Máy sạch không mạng:** chưa thử, kể cả bộ cài. Lúc thử gói, máy phát triển vẫn có mạng và có sẵn Python.
 - **Mở lại lần chạy cũ:** sau khi tắt app, giao diện không có danh sách các lần chạy, nên không tới được nút `Resume` của lần chạy dở nếu không còn link.

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sys
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from . import __version__, child_processes, file_dialog, flow as flow_module, flow_templates, i18n, paths, settings as app_settings
@@ -26,6 +27,12 @@ class Server(ThreadingHTTPServer):
     # A page load opens a dozen connections at once. Past this queue Windows refuses them,
     # scripts fail to load and the app stays blank.
     request_queue_size = 128
+
+    def handle_error(self, request, client_address):
+        # The page went away mid-answer, for example on a reload or a closed tab. Nothing is wrong.
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
 
 
 class ApiError(Exception):
