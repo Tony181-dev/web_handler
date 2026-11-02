@@ -1,6 +1,8 @@
 'use strict';
 
 const ACTIVE_JOB_POLL_MS = 2000;
+// The flow last open, so Setup can lead back to it.
+let lastFlowId = null;
 
 async function route() {
   if (window.leaveView) window.leaveView();
@@ -11,9 +13,12 @@ async function route() {
   // The builder keeps its Log button in the left column; other screens use the one in the corner.
   document.getElementById('log-corner').hidden = section === 'flow' && Boolean(id);
   try {
-    if (section === 'flow' && id) await renderBuilder(id);
+    if (section === 'flow' && id) {
+      lastFlowId = id;
+      await renderBuilder(id);
+    }
     else if (section === 'run' && id) await renderRun(id);
-    else if (section === 'setup') await renderSetup();
+    else if (section === 'setup') await renderSetup(lastFlowId);
     else await renderHome();
   } catch (error) {
     showError(error);

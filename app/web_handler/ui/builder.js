@@ -1,7 +1,9 @@
 'use strict';
 
 const INSPECTOR_MIN_WIDTH = 320;
-const INSPECTOR_MAX_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
+// Opens at 40% above the narrowest, and can grow 30% more from there.
+const INSPECTOR_DEFAULT_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
+const INSPECTOR_MAX_WIDTH = INSPECTOR_DEFAULT_WIDTH * 1.3;
 const INSPECTOR_KEY_STEP = 16;
 const HISTORY_LIMIT = 200;
 const PASSWORD_SAVE_DELAY_MS = 300;
@@ -454,15 +456,16 @@ class FlowEditor {
   }
 }
 
-// The side panel can grow from its normal size, up to 40% wider. The width is a per-browser convenience.
+// The side panel can shrink to its narrowest or grow 30% past where it opens. The width is a per-browser convenience.
 function inspectorResizer(builder) {
   let width = 0;
   const setWidth = wanted => {
     width = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, wanted));
     builder.style.setProperty('--inspector-width', `${width}px`);
-    memory.set('inspector.width', String(width));
+    memory.set('inspector.panel-width', String(width));
   };
-  setWidth(parseFloat(memory.get('inspector.width')) || INSPECTOR_MIN_WIDTH);
+  // A new name, so a width kept under the old default does not hold the new one back.
+  setWidth(parseFloat(memory.get('inspector.panel-width')) || INSPECTOR_DEFAULT_WIDTH);
   const handle = el('div.inspector-resize', {
     id: 'inspector-resize', role: 'separator', 'aria-orientation': 'vertical', tabindex: '0',
     'aria-label': t('Resize the side panel'),

@@ -2,7 +2,7 @@
 
 const SETUP_LABELS = { PASS: ['✓ Pass', 'ok'], FAIL: ['✗ Not passed', 'bad'], NOT_RUN: ['Not tried', 'neutral'] };
 
-async function renderSetup() {
+async function renderSetup(flowId) {
   setTopbarTitle(null);
   const view = document.getElementById('view');
   const page = el('div.page', { id: 'setup-page' });
@@ -15,6 +15,7 @@ async function renderSetup() {
     const busy = Boolean(status.busy);
     fill(page,
       el('div.page-head', null,
+        flowId ? el('a.btn', { id: 'setup-back', href: '#/flow/' + flowId, text: t('Back to flow') }) : null,
         el('h1', { text: t('Setup') }),
         el('span.spacer'),
         el('button.btn', { id: 'setup-test', text: t('Re-check'), disabled: busy || !status.ready, onclick: runTests }),

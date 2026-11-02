@@ -458,19 +458,19 @@ class BuilderTests(AppTestCase):
         self.page.mouse.up()
         return self.page.locator("#inspector").bounding_box()["width"]
 
-    def test_sidebar_resizes_from_its_size_up_to_forty_percent_more(self):
+    def test_sidebar_opens_wide_shrinks_to_its_narrowest_and_grows_thirty_percent_more(self):
         self.new_flow()
         start = self.page.locator("#inspector").bounding_box()["width"]
-        self.assertAlmostEqual(self.drag_sidebar(60), start, delta=1, msg="Cannot go below its normal size")
-        self.assertAlmostEqual(self.drag_sidebar(-50), start + 50, delta=2)
-        self.assertAlmostEqual(self.drag_sidebar(-800), start * 1.4, delta=1)
+        self.assertAlmostEqual(start, 320 * 1.4, delta=1)
+        self.assertAlmostEqual(self.drag_sidebar(800), 320, delta=1, msg="Cannot go below its narrowest")
+        self.assertAlmostEqual(self.drag_sidebar(-50), 370, delta=2)
+        self.assertAlmostEqual(self.drag_sidebar(-800), start * 1.3, delta=1)
         self.shot("sidebar_wide")
         canvas = self.page.locator("#canvas").bounding_box()
         self.assertAlmostEqual(canvas["x"] + canvas["width"], self.page.locator("#inspector").bounding_box()["x"], delta=1)
         self.page.reload()
         expect(self.page.locator("#inspector")).to_be_visible()
-        self.assertAlmostEqual(self.page.locator("#inspector").bounding_box()["width"], start * 1.4, delta=1)
-        self.assertAlmostEqual(self.drag_sidebar(800), start, delta=1)
+        self.assertAlmostEqual(self.page.locator("#inspector").bounding_box()["width"], start * 1.3, delta=1)
 
     def test_sidebar_resizes_with_the_keyboard(self):
         self.new_flow()
@@ -871,6 +871,19 @@ class SystemLogTests(AppTestCase):
 
 
 class SetupAndSecurityTests(AppTestCase):
+    def test_setup_leads_back_to_the_flow_being_edited(self):
+        self.new_flow()
+        flow_url = self.page.url
+        self.page.click("#nav-setup")
+        self.page.click("#setup-back")
+        self.page.wait_for_url(flow_url)
+        expect(self.page.locator("#canvas")).to_be_visible()
+
+    def test_setup_from_home_has_no_way_back_to_a_flow(self):
+        self.page.click("#nav-setup")
+        expect(self.page.locator("#setup-page h1")).to_be_visible()
+        expect(self.page.locator("#setup-back")).to_have_count(0)
+
     def test_setup_screen(self):
         self.page.click("#nav-setup")
         expect(self.page.locator("[data-item=libraries]")).to_contain_text("Pass", timeout=60000)
