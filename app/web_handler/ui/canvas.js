@@ -161,8 +161,22 @@ function renderItem(editor, step, index, withArrow) {
       }
     },
   }, el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
-  node.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, node));
-  return el('div.item', { 'data-index': index }, node, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  node.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, node.parentElement.classList.contains('node-pair') ? node.parentElement : node));
+  const chip = variableChip(step);
+  if (!chip) return el('div.item', { 'data-index': index }, node, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  // The block and its variable are one piece: dragging either moves both.
+  const pair = el('div.node-pair', null, node, chip);
+  chip.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, pair));
+  return el('div.item', { 'data-index': index }, pair, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+}
+
+// The variable a reading block fills, as a square beside it, so later blocks can be seen to use it.
+function variableChip(step) {
+  if (!['read', 'ocr'].includes(step.do) || (step.save_to_column !== undefined && step.save_to_column !== null)) return null;
+  const name = step.save_to_var;
+  return el('div.var-chip', { title: name || '' },
+    el('b', { text: t('Variable') }),
+    el('span', { text: name || t('no name yet') }));
 }
 
 function renderLoop(editor, loop) {
@@ -206,10 +220,13 @@ function renderSelectionBar(editor) {
 
 // The same diagram, read-only, showing how far a run has got. stateOf(id) gives a class or null.
 function renderRunDiagram(flow, stateOf) {
-  const item = (step, withArrow) => el('div.item', null,
-    el('div.' + ['node', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-step': step.id },
-      el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) })),
-    withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  const item = (step, withArrow) => {
+    const node = el('div.' + ['node', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-step': step.id },
+      el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
+    const chip = variableChip(step);
+    return el('div.item', null, chip ? el('div.node-pair', null, node, chip) : node,
+      withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  };
   return el('div.lane', null, flow.steps.map((step, index) => {
     if (step.do !== 'loop') return item(step, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop');
     const description = step.source === 'count' ? t('{count} time(s)', { count: step.count || 1 }) : t('each Excel row');
@@ -293,7 +310,7 @@ function placeMarker(marker, position, pointerY) {
   // The next block is on a lower row, but the pointer is still at the end of this one.
   const previous = index > 0 && index < items.length ? items[index - 1] : null;
   if (previous && pointerY < box.top && !previous.classList.contains('block')) {
-    const node = previous.querySelector('.node').getBoundingClientRect();
+    const node = (previous.querySelector('.node-pair') || previous.querySelector('.node')).getBoundingClientRect();
     marker.style.left = node.right + 4 + 'px';
     marker.style.top = node.top + 'px';
     marker.style.height = node.height + 'px';

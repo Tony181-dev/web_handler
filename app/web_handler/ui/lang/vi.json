@@ -4,7 +4,7 @@
   "Click": "Bấm",
   "Select": "Chọn",
   "Check": "Tick",
-  "Read value": "Đọc giá trị",
+  "Read value": "Lấy giá trị",
   "Wait for element": "Chờ phần tử",
   "Wait": "Chờ",
   "Verify": "Kiểm tra",
@@ -569,5 +569,6 @@
   "Saved. Type here to change it.": "Đã lưu. Gõ vào đây để đổi.",
   "Type the password": "Nhập mật khẩu",
   "Saved in Windows Credential Manager under Secrets, not in the flow file.": "Được lưu trong Trình quản lý thông tin xác thực của Windows, ở mục Bí mật, không nằm trong file quy trình.",
-  "The app was updated. Close its window and reopen it.": "App đã được cập nhật. Hãy đóng cửa sổ của app rồi mở lại."
+  "The app was updated. Close its window and reopen it.": "App đã được cập nhật. Hãy đóng cửa sổ của app rồi mở lại.",
+  "no name yet": "chưa đặt tên"
 }

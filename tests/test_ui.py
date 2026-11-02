@@ -1463,6 +1463,107 @@ class HideShowTests(AppTestCase):
         self.assertLessEqual(run["x"] + run["width"], self.page.viewport_size["width"])
 
 
+class VariableChipTests(AppTestCase):
+    def chip(self):
+        return self.page.locator("#canvas .var-chip")
+
+    def node(self, index=0):
+        return self.page.locator("#canvas .node").nth(index)
+
+    def test_saving_to_a_variable_adds_a_dashed_square_beside_the_block(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=read]").click()
+        chip = self.chip()
+        expect(chip).to_be_visible()
+        expect(chip).to_contain_text("no name yet")
+        self.assertEqual(chip.evaluate("el => getComputedStyle(el).borderTopStyle"), "dashed")
+        node, box = self.node().bounding_box(), chip.bounding_box()
+        self.assertAlmostEqual(box["x"], node["x"] + node["width"], delta=4)
+        self.assertAlmostEqual(box["y"], node["y"], delta=2)
+        self.assertAlmostEqual(box["height"], node["height"], delta=2)
+        self.assertAlmostEqual(box["width"], box["height"], delta=2)
+        self.page.locator("[data-field=save_to_var]").fill("ten_cu")
+        expect(chip).to_contain_text("ten_cu")
+        self.shot("variable_chip")
+
+        self.page.select_option("[data-field=read-mode]", "column")
+        expect(chip).to_have_count(0)
+        self.page.select_option("[data-field=read-mode]", "var")
+        expect(chip).to_be_visible()
+
+    def test_ocr_block_gets_the_same_square_and_other_blocks_none(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=fill]").click()
+        expect(self.chip()).to_have_count(0)
+        self.page.locator(".tool[data-kind=ocr]").click()
+        expect(self.chip()).to_have_count(1)
+
+    def test_clicking_the_square_selects_its_block(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=read]").click()
+        self.page.locator(".tool[data-kind=goto]").click()
+        expect(self.node(0)).not_to_have_class(re.compile("selected"))
+        self.chip().click()
+        expect(self.node(0)).to_have_class(re.compile("selected"))
+
+    def drag(self, handle, target):
+        start, goal = handle.bounding_box(), target.bounding_box()
+        self.page.mouse.move(start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
+        self.page.mouse.down()
+        self.page.mouse.move(goal["x"] + goal["width"] - 8, goal["y"] + goal["height"] / 2, steps=8)
+        self.page.mouse.up()
+
+    def test_block_and_square_move_together_whichever_is_dragged(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=read]").click()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.page.locator(".tool[data-kind=click]").click()
+        self.drag(self.node(0), self.node(1))
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds, ["goto", "read", "click"])
+        read, chip = self.node(1).bounding_box(), self.chip().bounding_box()
+        self.assertAlmostEqual(chip["x"], read["x"] + read["width"], delta=4)
+        self.drag(self.chip(), self.node(2))
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds, ["goto", "click", "read"])
+        read, chip = self.node(2).bounding_box(), self.chip().bounding_box()
+        self.assertAlmostEqual(chip["x"], read["x"] + read["width"], delta=4)
+
+    def test_drop_marker_goes_after_the_square_not_between(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=read]").click()
+        self.page.locator(".tool[data-kind=goto]").click()
+        chip = self.chip().bounding_box()
+        tool = self.page.locator(".tool[data-kind=wait]").bounding_box()
+        self.page.mouse.move(tool["x"] + 20, tool["y"] + 10)
+        self.page.mouse.down()
+        self.page.mouse.move(chip["x"] + chip["width"] - 4, chip["y"] + 20, steps=6)
+        marker = self.page.locator(".drop-marker").bounding_box()
+        self.page.mouse.up()
+        self.assertGreaterEqual(marker["x"], chip["x"] + chip["width"] - 4)
+
+    def test_run_diagram_shows_the_square_too(self):
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        self.page.evaluate("""() => { const e = window.currentEditor; const loop = e.flow.steps.find(s => s.do === 'loop');
+            const read = loop.steps.find(s => s.do === 'read'); read.save_to_var = 'saved'; read.save_to_column = null; e.changed(); }""")
+        self.saved_flow()
+        expect(self.chip()).to_contain_text("saved")
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-flow .var-chip")).to_contain_text("saved")
+        expect(self.page.locator("#run-stop")).to_have_count(0, timeout=90000)
+
+    def test_vietnamese_names_the_block_get_value(self):
+        self.new_flow()
+        self.page.select_option("#language", "vi")
+        expect(self.page.locator(".tool[data-kind=read]")).to_have_text("Lấy giá trị")
+        self.page.locator(".tool[data-kind=read]").click()
+        expect(self.chip()).to_contain_text("chưa đặt tên")
+        self.page.select_option("#language", "en")
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+
+
 class BrandTests(AppTestCase):
     def test_author_is_shown_under_the_name(self):
         name = self.page.locator(".brand-name")
