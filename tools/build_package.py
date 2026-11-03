@@ -1,6 +1,8 @@
 """Build dist/WebHandler-<version>.zip and dist/WebHandler-Setup-<version>.exe.
 
 Run on a Windows machine with internet access and Inno Setup 6.
+A finished build leaves only the new release in dist: the zip, the Setup exe and the unpacked
+WebHandler folder, whose data and runtime are kept. A failed build leaves dist as it was.
 Use --no-chromium for a smaller package that relies on Chrome being installed.
 Use --no-installer to build only the zip.
 """
@@ -27,6 +29,9 @@ CACHE_DIR = ROOT / "build" / "cache"
 STAGING_DIR = ROOT / "build" / "package"
 DIST_DIR = ROOT / "dist"
 PACKAGE_NAME = "WebHandler"
+# Made on the machine by the app itself, never by a build: someone's flows and sessions, and the
+# installed Python and libraries. Refreshing the unpacked copy leaves them alone.
+KEPT_IN_PACKAGE = {"data", "runtime"}
 
 
 def version():
@@ -111,16 +116,47 @@ def copy_app(package):
     shutil.copytree(ROOT / "app", package / "app", ignore=ignore)
 
 
+def remove(path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
 def refresh_folder(source, target):
-    """Update an unpacked copy in place, which may be running and holds someone's data and runtime.
+    """Make an unpacked copy match the new package, in place: it may be running and holds someone's data.
 
     Only changed files are written: cmd.exe misbehaves when a running Start.bat is rewritten.
+    Files the new package no longer has are removed, except the folders in KEPT_IN_PACKAGE.
     """
     for path in source.rglob("*"):
         destination = target / path.relative_to(source)
         if path.is_file() and not (destination.exists() and filecmp.cmp(path, destination, shallow=False)):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, destination)
+    remove_extra(source, target, KEPT_IN_PACKAGE)
+
+
+def remove_extra(source, target, keep=()):
+    """Remove what is in target but not in source. Kept folders are not even looked into."""
+    for path in target.iterdir():
+        if path.name in keep:
+            continue
+        counterpart = source / path.name
+        if not counterpart.exists():
+            remove(path)
+        elif path.is_dir() and not path.is_symlink() and counterpart.is_dir():
+            remove_extra(counterpart, path)
+
+
+def clear_dist(keep):
+    """Remove earlier releases and other leftovers from dist, so it holds only what this build made."""
+    for path in DIST_DIR.iterdir():
+        if path.name not in keep:
+            try:
+                remove(path)
+            except OSError as error:
+                raise SystemExit(f"Could not remove {path}: {error}. Close what is using it and build again.")
 
 
 def find_inno_setup():
@@ -134,17 +170,17 @@ def find_inno_setup():
     return None
 
 
-def build_installer(package, compiler):
+def build_installer(package, compiler, output_dir):
     script = STAGING_DIR / "installer.iss"
     shutil.copy2(ROOT / "tools" / "installer.iss", script)
     subprocess.run(
         [
             str(compiler), "/Q", f"/DAppVersion={version()}", f"/DSourceDir={package}",
-            f"/DOutputDir={DIST_DIR}", str(script),
+            f"/DOutputDir={output_dir}", str(script),
         ],
         check=True,
     )
-    return DIST_DIR / f"{PACKAGE_NAME}-Setup-{version()}.exe"
+    return output_dir / f"{PACKAGE_NAME}-Setup-{version()}.exe"
 
 
 def build(with_chromium, with_installer):
@@ -180,13 +216,22 @@ def build(with_chromium, with_installer):
     build_probe.write_crlf(ROOT / "README.txt", package / "README.txt")
     build_probe.write_crlf(ROOT / "README.vi.txt", package / "README.vi.txt")
     build_probe.write_crlf(ROOT / "Install.bat", package / "Install.bat")
+    build_probe.write_crlf(ROOT / "Uninstall.bat", package / "Uninstall.bat")
 
+    # Made next to the package first: dist only changes once everything is built.
+    made = STAGING_DIR / "release"
+    made.mkdir()
     print("Creating the zip file...")
     name = f"{PACKAGE_NAME}-{version()}"
-    outputs = [Path(shutil.make_archive(str(DIST_DIR / name), "zip", STAGING_DIR, PACKAGE_NAME))]
+    built = [Path(shutil.make_archive(str(made / name), "zip", STAGING_DIR, PACKAGE_NAME))]
     if compiler:
         print("Creating the installer...")
-        outputs.append(build_installer(package, compiler))
+        built.append(build_installer(package, compiler, made))
+
+    print("Clearing the dist folder...")
+    clear_dist(keep={PACKAGE_NAME})
+    outputs = [Path(shutil.move(str(path), str(DIST_DIR / path.name))) for path in built]
+    (DIST_DIR / PACKAGE_NAME).mkdir(exist_ok=True)
     refresh_folder(package, DIST_DIR / PACKAGE_NAME)
     shutil.rmtree(STAGING_DIR)
     for output in outputs:

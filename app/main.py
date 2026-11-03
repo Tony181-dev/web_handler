@@ -1,6 +1,7 @@
 """Start Web Handler: open the running app if there is one, otherwise serve it.
 
---stop ends a running app. --install finishes installing the offline package. Both are for the installers.
+--stop ends a running app. --install finishes installing the offline package.
+--forget-secrets removes the saved secrets from Windows Credential Manager. All three are for the installers.
 """
 import ctypes
 from ctypes import wintypes
@@ -65,11 +66,29 @@ def install():
     return 0 if ready else 1
 
 
+def forget_secrets():
+    """For an uninstall that deletes the data: the secrets themselves live outside the app folder."""
+    from web_handler import secret_store
+
+    paths.activate_site()
+    names = secret_store.names()
+    try:
+        for name in names:
+            secret_store.delete_secret(name)
+    except Exception as error:
+        say(t("Could not remove the saved secrets: {error}", error=error))
+        return 1
+    say(t("Removed {count} saved secrets from Windows Credential Manager.", count=len(names)))
+    return 0
+
+
 def main():
     if "--stop" in sys.argv:
         return stop()
     if "--install" in sys.argv:
         return install()
+    if "--forget-secrets" in sys.argv:
+        return forget_secrets()
     no_browser = "--no-browser" in sys.argv
     existing = server.running_instance()
     if existing:

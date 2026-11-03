@@ -42,6 +42,9 @@ Double-click Install.bat in the source folder. It builds the package and needs i
 Send the WebHandler-Setup-<version>.exe it creates. The other person only runs that one file.
 
 UNINSTALL
-- Installed with the installer: remove Web Handler in Settings, Apps. It asks whether to delete your data.
-- Installed with the script or not installed: close the app, then delete the folder and the shortcuts.
-Saved secrets stay in Windows Credential Manager, under WebHandler/.
+Click "Uninstall Web Handler" in the Start menu, or double-click Uninstall.bat in the app folder.
+It closes the app, removes its files and shortcuts, and asks whether to delete your data too:
+flows, run history, login sessions and saved secrets. Choose No to keep them for a later install.
+- Installed with the installer: Settings, Apps, Web Handler works too.
+- Not installed (unpacked zip): Uninstall.bat in that folder removes it the same way.
+Kept secrets stay in Windows Credential Manager, under WebHandler/.

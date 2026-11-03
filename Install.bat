@@ -8,6 +8,7 @@ rem   and brings dist\WebHandler up to date, keeping its data. Options go to too
 rem   Needs internet the first time, Python 3 and Inno Setup 6.
 rem - In the unpacked zip it installs, for machines where the Setup exe is blocked.
 rem   Usage: Install.bat [target folder]. No admin rights needed. The data folder is never touched.
+rem   Uninstall.bat, copied next to it, removes it again.
 
 rem Programs are only looked up on PATH, never in the current folder, and Windows tools by their full path,
 rem so a file planted next to this one or another tool earlier on PATH cannot stand in for them.
@@ -44,17 +45,19 @@ if errorlevel 8 goto failed
 copy /y "%SOURCE%Start.bat" "%TARGET%\Start.bat" >nul || goto failed
 copy /y "%SOURCE%README.txt" "%TARGET%\README.txt" >nul || goto failed
 copy /y "%SOURCE%README.vi.txt" "%TARGET%\README.vi.txt" >nul || goto failed
+copy /y "%SOURCE%Uninstall.bat" "%TARGET%\Uninstall.bat" >nul || goto failed
 
 echo Installing libraries. This takes a few minutes...
 call "%TARGET%\Start.bat" --install
 if errorlevel 1 echo The app will finish this on its Setup screen when you first open it.
 
 rem The folder reaches PowerShell as an environment variable, never as part of the command text.
-"%SYS%\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$s = New-Object -ComObject WScript.Shell; foreach ($folder in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) { $l = $s.CreateShortcut((Join-Path $folder 'Web Handler.lnk')); $l.TargetPath = $env:TARGET + '\Start.bat'; $l.WorkingDirectory = $env:TARGET; $l.IconLocation = $env:SystemRoot + '\System32\shell32.dll,13'; $l.Save() }"
+"%SYS%\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$s = New-Object -ComObject WScript.Shell; foreach ($folder in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) { $l = $s.CreateShortcut((Join-Path $folder 'Web Handler.lnk')); $l.TargetPath = $env:TARGET + '\Start.bat'; $l.WorkingDirectory = $env:TARGET; $l.IconLocation = $env:SystemRoot + '\System32\shell32.dll,13'; $l.Save() }; $l = $s.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Uninstall Web Handler.lnk')); $l.TargetPath = $env:TARGET + '\Uninstall.bat'; $l.WorkingDirectory = $env:TARGET; $l.IconLocation = $env:SystemRoot + '\System32\shell32.dll,31'; $l.Save()"
 if errorlevel 1 echo Could not create shortcuts. Open the app with Start.bat in the target folder.
 
 echo.
 echo Done. Open Web Handler from the Desktop or the Start menu.
+echo To remove it later: "Uninstall Web Handler" in the Start menu, or Uninstall.bat in that folder.
 exit /b 0
 
 :bad_source

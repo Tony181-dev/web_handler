@@ -205,6 +205,8 @@
   "Install missing": "Cài phần còn thiếu",
   "Install what is missing": "Cài những gì còn thiếu",
   "Installed.": "Đã cài xong.",
+  "Could not remove the saved secrets: {error}": "Không xóa được các bí mật đã lưu: {error}",
+  "Removed {count} saved secrets from Windows Credential Manager.": "Đã xóa {count} bí mật đã lưu khỏi Windows Credential Manager.",
   "Installing libraries...": "Đang cài thư viện...",
   "Installing the libraries and the spare browser...": "Đang cài thư viện và trình duyệt dự phòng...",
   "Installing the libraries took too long.": "Cài thư viện quá thời gian.",

@@ -30,12 +30,15 @@ CloseApplications=no
 Source: "{#SourceDir}\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs ignoreversion
 Source: "{#SourceDir}\offline\*"; DestDir: "{app}\offline"; Flags: recursesubdirs ignoreversion
 Source: "{#SourceDir}\Start.bat"; DestDir: "{app}"; Flags: ignoreversion
+; The same file as in the zip: here it opens the uninstaller below.
+Source: "{#SourceDir}\Uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.vi.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Web Handler"; Filename: "{app}\Start.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 13
 Name: "{autodesktop}\Web Handler"; Filename: "{app}\Start.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 13
+Name: "{autoprograms}\Uninstall Web Handler"; Filename: "{uninstallexe}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 31
 
 [Run]
 Filename: "{app}\Start.bat"; Description: "Open Web Handler"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent shellexec
@@ -49,6 +52,9 @@ Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}\app"
 
 [Code]
+var
+  DeleteData: Boolean;
+
 function RunStart(Argument: String; var ResultCode: Integer): Boolean;
 begin
   Result := Exec(ExpandConstant('{cmd}'),
@@ -85,13 +91,20 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Data: String;
+  ResultCode: Integer;
 begin
-  if CurUninstallStep = usPostUninstall then
+  Data := ExpandConstant('{app}\data');
+  // Asked before the files go: the app removes the saved secrets, and it is still there now.
+  if CurUninstallStep = usUninstall then
   begin
-    Data := ExpandConstant('{app}\data');
+    DeleteData := False;
     if DirExists(Data) and not UninstallSilent then
-      if MsgBox('Also delete your data: flows, run history and login sessions?' + #13#10 +
-                'Choose No to keep it in ' + Data + '.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-        DelTree(Data, True, True, True);
+      DeleteData := MsgBox('Also delete your data: flows, run history, login sessions and saved secrets?' + #13#10 +
+                           'Choose No to keep it in ' + Data + '.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    if DeleteData then
+      if (not RunStart('--forget-secrets', ResultCode)) or (ResultCode <> 0) then
+        MsgBox('The saved secrets could not be removed. Remove the entries starting with WebHandler/ in Windows Credential Manager.', mbInformation, MB_OK);
   end;
+  if (CurUninstallStep = usPostUninstall) and DeleteData then
+    DelTree(Data, True, True, True);
 end;

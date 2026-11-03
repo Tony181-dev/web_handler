@@ -41,6 +41,9 @@ Bấm đúp Install.bat trong thư mục mã nguồn. Nó đóng gói app, lần
 Gửi file WebHandler-Setup-<phiên bản>.exe vừa tạo. Người nhận chỉ cần chạy đúng một file đó.
 
 GỠ
-- Cài bằng bộ cài: gỡ Web Handler trong Settings, Apps. Bộ gỡ sẽ hỏi có xóa dữ liệu của bạn không.
-- Cài bằng script hoặc không cài: đóng app, rồi xóa thư mục và các shortcut.
-Các bí mật đã lưu nằm trong Windows Credential Manager, mục WebHandler/.
+Bấm "Uninstall Web Handler" trong Start menu, hoặc bấm đúp Uninstall.bat trong thư mục app.
+Nó đóng app, xóa file và shortcut của app, rồi hỏi có xóa luôn dữ liệu không:
+flow, lịch sử chạy, phiên đăng nhập và các bí mật đã lưu. Chọn No để giữ lại cho lần cài sau.
+- Cài bằng bộ cài: gỡ trong Settings, Apps, Web Handler cũng được.
+- Không cài (chỉ giải nén zip): Uninstall.bat trong thư mục đó gỡ theo cách tương tự.
+Bí mật được giữ lại nằm trong Windows Credential Manager, mục WebHandler/.
