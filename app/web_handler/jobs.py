@@ -56,6 +56,8 @@ class Run:
         self.session = None
         self.state = "running"
         self.stopped_now = False
+        # The run has ended, and its window is left to the person until they close it.
+        self.kept_open = False
         self.started_at = datetime.now().isoformat(timespec="seconds")
 
     @property
@@ -127,6 +129,10 @@ class JobManager:
         run = self.active
         if run is None or run.session is None or run.state == "running" or not run.session.alive():
             return
+        if run.kept_open:
+            # Only one browser can use the profile, and the person has asked for something new.
+            self.log.add("info", t("Closed the browser kept open from the last run."))
+            run.session.send({"cmd": "stop"})
         if not run.session.wait(WORKER_EXIT_SECONDS):
             run.session.kill()
             run.session.wait(STOP_NOW_GRACE_SECONDS)
@@ -178,9 +184,16 @@ class JobManager:
         if event.get("type") == "finished":
             run.state = event.get("outcome") or "finished"
             run.save_meta({"outcome": run.state, "result_file": event.get("result_file"), "message": event.get("message")})
-            timer = threading.Timer(WORKER_EXIT_SECONDS, run.session.kill)
-            timer.daemon = True
-            timer.start()
+            run.kept_open = bool(event.get("kept_open")) and not run.stopped_now
+            if run.kept_open:
+                self.log.add("info", t("The browser stays open. Close it when you are done."))
+            elif event.get("kept_open"):
+                # Stop now means everything, the window too.
+                run.session.send({"cmd": "stop"})
+            if not run.kept_open:
+                timer = threading.Timer(WORKER_EXIT_SECONDS, run.session.kill)
+                timer.daemon = True
+                timer.start()
         run.log.add(event)
 
     def _on_run_exit(self, run, code):
@@ -209,6 +222,21 @@ class JobManager:
             if self.recording is not None and self.recording.alive():
                 return {"kind": "recording"}
             return None
+
+    def browser_state(self):
+        """running while a run uses the browser, kept while its window is left open after it, or None."""
+        with self.lock:
+            run = self.active
+            if run is None or run.session is None or not run.session.alive():
+                return None
+            if run.state == "running":
+                return "running"
+            return "kept" if run.kept_open else None
+
+    def close_kept_browser(self):
+        with self.lock:
+            if self.browser_state() == "kept":
+                self._let_finished_run_close()
 
     def stop_active(self):
         """Stop whatever is running, now. It gets a moment to save, and is ended if that is not enough."""

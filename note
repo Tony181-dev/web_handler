@@ -1,6 +1,6 @@
 # Web Handler: ghi chú dự án
 
-Cập nhật: 2026-11-02. Phiên bản hiện tại: **0.1.14**.
+Cập nhật: 2026-11-03. Phiên bản hiện tại: **0.1.14**.
 
 Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
 
@@ -9,7 +9,7 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 | Hạng mục | Tình trạng |
 |---|---|
 | App, bộ cài exe và file zip 0.1.14 | Xong |
-| Test tự động của app | 254/254 đạt (`test_i18n` 19, `test_core` 86, `test_html_reader` 18, `test_shutdown` 9, `test_integration` 29, `test_ui` 93) |
+| Test tự động của app | 298/298 đạt (`test_i18n` 19, `test_core` 94, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 37, `test_ui` 117), ngày 2026-11-03 |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
 | Bộ cài có giao diện | **Chưa bấm thử bằng tay**, gồm các trang của trình cài và hộp hỏi xóa dữ liệu khi gỡ |
@@ -67,10 +67,14 @@ python tools/build_package.py
 - Chọn từ 1 khối trở lên thì hiện thanh có `Create loop`, `Duplicate`, `Delete`. Thanh luôn có sẵn chỗ nên các khối không bị đẩy. `Duplicate` đặt bản sao ngay sau khối gốc, giữ thứ tự khi chọn nhiều khối, và ở nguyên trong vùng lặp nếu khối gốc ở đó.
 - `Undo`, `Redo` bên trái `Run once`, hoặc `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` khi không gõ trong ô nhập. Lịch sử tối đa 200 bước, chỉ giữ trong lúc quy trình đang mở, mất khi rời quy trình hoặc tải lại trang.
 - `Read OCR`: đọc chữ trong ảnh trên trang bằng `ddddocr`, chạy trên máy. Ảnh chụp của phần tử chỉ nằm trong bộ nhớ, không tạo file nên không cần dọn. Kết quả lưu vào biến hoặc cột Excel, có tùy chọn chữ hoa, chữ thường. Thử trên ảnh captcha giả lập: `ddddocr` 117/120, RapidOCR 59/120, OCR của Windows 6/32. Chưa thử trên captcha thật. Chỉ hợp với chữ ngắn.
-- Nút chuyển chế độ trình duyệt ở thanh dưới: `Visible`, `Offscreen` (thu nhỏ dưới taskbar), `Headless`. Lưu trong `data/settings.json`. Chỉ áp dụng cho `Run` và `Run once`. `Manual step` tự bật cửa sổ lên ở `Offscreen`, và bị từ chối trước khi chạy ở `Headless`.
+- Nút chuyển chế độ trình duyệt ở thanh dưới: `Visible` (cửa sổ phóng to hết màn hình), `Offscreen` (thu nhỏ dưới taskbar), `Headless`. Lưu trong `data/settings.json`. Chỉ áp dụng cho `Run` và `Run once`. `Manual step` tự bật cửa sổ lên (phóng to) ở `Offscreen`, và bị từ chối trước khi chạy ở `Headless`.
+- Nút `Keep browser: On/Off` ngay sau nút chế độ trình duyệt, có cả ở màn hình chạy. Lưu trong `data/settings.json` (`keep_browser`), mặc định tắt. Khi bật, `Run` và `Run once` xong thì Chrome vẫn mở (Offscreen thì bật cửa sổ lên) để thao tác tay tiếp. Worker đọc lại cài đặt lúc kết thúc, nên bật/tắt giữa lượt chạy vẫn có tác dụng. Không áp dụng ở `Headless` (nút mờ đi). `Stop now` vẫn đóng cả Chrome.
+  - Chấm trên nút: xanh nhấp nháy khi lượt chạy đang dùng trình duyệt, xanh đứng yên khi đang giữ mở, xám khi không có. Tooltip ghi rõ trạng thái. Thanh trên hiện `● Browser kept open`, bấm vào có `Close browser`.
+  - Chrome đang được giữ không chặn lượt mới. `Run`, `Record` hay `Check on live page` tự đóng nó trước (profile chỉ cho một Chrome dùng), có dòng trong Log. Tắt app cũng đóng nó.
 - Ô giá trị của `Fill` và ô `Account` có nút hình mắt ẩn/hiện, mặc định hiện. Nút chỉ che trên màn hình, giá trị của `Fill` vẫn nằm dạng chữ trong file quy trình.
 - Khối `Read value` và `Read OCR` lưu vào biến thì có ô vuông viền nét đứt, nền vàng nhạt liền bên phải khối, cao bằng khối, ghi tên biến. Chọn ghi vào cột Excel thì ô này mất. Khối và ô biến là một: kéo từ ô nào cũng di chuyển cả hai, bấm ô biến là chọn khối. Sơ đồ ở màn hình chạy cũng có ô này.
 - Sắp xếp lại bằng cách kéo khối, xóa bằng `Delete block` hoặc phím Delete.
+- Cột khối bên trái mở mặc định rộng 173px (128px × 1,35), kéo mép phải hoặc dùng phím mũi tên để thu về 128px hoặc nới thêm 30% (khoảng 225px). Cao và cỡ chữ của nút khối giữ nguyên. Trình duyệt nhớ độ rộng (`palette.width`).
 - `Loop`: bấm hoặc kéo khối `Loop` viền xanh ở cột trái để thêm vùng lặp trống cao bằng một hàng khối, rồi kéo khối vào, vùng lặp tự giãn theo. Hoặc kéo chuột khoanh các khối liên tiếp rồi bấm `Create loop`, để phần đăng nhập nằm ngoài vùng lặp. Lặp theo từng hàng Excel hoặc theo số lần cố định. Mỗi quy trình có một vùng lặp.
 - `Clear all`: xóa mọi khối, vùng lặp và cấu hình Excel của quy trình, sau khi hỏi xác nhận. Giữ tên quy trình, file Excel, Secrets và lịch sử chạy. `Undo` khôi phục được khi quy trình còn đang mở.
 - `● Record`: làm tay một lượt trong Chrome, tool ghi lại thành các bước để xem lại trước khi đưa vào sơ đồ. Ô mật khẩu không bao giờ được ghi: khối điền mật khẩu được để trống và có dấu `!` đỏ, người dùng tự chọn mật khẩu trong khối. Trước 0.1.13 tool tự gán một tên bí mật, hay gây lỗi khi chạy vì bí mật đó chưa có.
@@ -221,6 +225,11 @@ python tools/build_package.py
 - Trang Setup mở từ một quy trình có nút `Back to flow` để quay lại quy trình đó.
 - Thanh bên phải mở mặc định rộng 448px (320px × 1,4), thu hẹp được tới 320px và nới rộng thêm 30%, tối đa khoảng 582px. Độ rộng lưu theo trình duyệt dưới tên mới `inspector.panel-width`, nên độ rộng cũ không giữ lại.
 - Nhật ký các lần chạy và bảng Log (`system.log`) được lưu bằng ngôn ngữ lúc ghi. Khi xem lại, thông báo được dịch sang ngôn ngữ đang dùng (`i18n.retranslate`). Phần không phải câu của app, như tên phần tử hay giá trị, giữ nguyên.
+
+### Sau 0.1.14, chưa build bộ cài (2026-11-03)
+- Thêm nút `Keep browser` giữ Chrome mở sau lượt chạy (Visible và Offscreen), có chấm báo trạng thái trình duyệt.
+- Chế độ `Visible` mở Chrome phóng to hết màn hình (`--start-maximized`, và `show()` đặt `maximized` thay vì `normal`).
+- Cột khối bên trái rộng thêm 35%, kéo giãn được. Code kéo giãn của hai cột dùng chung `panelResizer` trong `builder.js`.
 
 ## File chính
 

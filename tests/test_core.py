@@ -688,10 +688,11 @@ class BrowserModeTests(unittest.TestCase):
             with unittest.mock.patch.object(browser.setup_checks, "find_chrome", lambda: "chrome.exe"):
                 return browser.launch_options(mode)
 
-    def test_visible_shows_a_normal_window(self):
+    def test_visible_shows_a_window_over_the_whole_screen(self):
         options = self.options("visible")
         self.assertFalse(options["headless"])
-        self.assertNotIn("--start-minimized", options.get("args", []))
+        self.assertIn("--start-maximized", options["args"])
+        self.assertNotIn("--start-minimized", options["args"])
 
     def test_offscreen_starts_in_the_taskbar_with_a_real_window(self):
         options = self.options("offscreen")
@@ -710,6 +711,18 @@ class BrowserModeTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     settings.save_browser_mode("sideways")
                 self.assertEqual(settings.browser_mode(), "offscreen")
+
+    def test_keeping_the_browser_is_off_until_turned_on(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with unittest.mock.patch.object(settings.paths, "data_dir", lambda: Path(folder)):
+                self.assertFalse(settings.keep_browser())
+                settings.save_keep_browser(True)
+                self.assertTrue(settings.keep_browser())
+                with self.assertRaises(ValueError):
+                    settings.save_keep_browser("yes")
+                self.assertTrue(settings.keep_browser())
+                settings.save_keep_browser(False)
+                self.assertFalse(settings.keep_browser())
 
 
 class SavedMessageLanguageTests(unittest.TestCase):

@@ -4,7 +4,11 @@ const INSPECTOR_MIN_WIDTH = 320;
 // Opens at 40% above the narrowest, and can grow 30% more from there.
 const INSPECTOR_DEFAULT_WIDTH = INSPECTOR_MIN_WIDTH * 1.4;
 const INSPECTOR_MAX_WIDTH = INSPECTOR_DEFAULT_WIDTH * 1.3;
-const INSPECTOR_KEY_STEP = 16;
+// The block list opens 35% wider than it used to be, and can shrink back to that or grow 30% more.
+const PALETTE_MIN_WIDTH = 128;
+const PALETTE_DEFAULT_WIDTH = Math.round(PALETTE_MIN_WIDTH * 1.35);
+const PALETTE_MAX_WIDTH = Math.round(PALETTE_DEFAULT_WIDTH * 1.3);
+const PANEL_KEY_STEP = 16;
 const HISTORY_LIMIT = 200;
 const PASSWORD_SAVE_DELAY_MS = 300;
 // The labels stay in English in every language, as the names of these modes.
@@ -408,6 +412,7 @@ class FlowEditor {
       el('span.spacer'),
       this.saveStateNode,
       modeButton,
+      keepBrowserButton(this.browserMode),
       this.undoNode,
       this.redoNode,
       el('button.btn', { id: 'run-trial', text: t('Run once'), onclick: () => startRunFlow(this, 'trial') }),
@@ -456,29 +461,28 @@ class FlowEditor {
   }
 }
 
-// The side panel can shrink to its narrowest or grow 30% past where it opens. The width is a per-browser convenience.
-function inspectorResizer(builder) {
+// A column beside the canvas that can be dragged wider or narrower. The width is a per-browser convenience.
+// grows is 1 when dragging to the right widens it, -1 when dragging to the left does.
+function panelResizer(builder, { id, property, storageKey, min, start, max, grows, label }) {
   let width = 0;
   const setWidth = wanted => {
-    width = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, wanted));
-    builder.style.setProperty('--inspector-width', `${width}px`);
-    memory.set('inspector.panel-width', String(width));
+    width = Math.min(max, Math.max(min, wanted));
+    builder.style.setProperty(property, `${width}px`);
+    memory.set(storageKey, String(width));
   };
-  // A new name, so a width kept under the old default does not hold the new one back.
-  setWidth(parseFloat(memory.get('inspector.panel-width')) || INSPECTOR_DEFAULT_WIDTH);
-  const handle = el('div.inspector-resize', {
-    id: 'inspector-resize', role: 'separator', 'aria-orientation': 'vertical', tabindex: '0',
-    'aria-label': t('Resize the side panel'),
+  setWidth(parseFloat(memory.get(storageKey)) || start);
+  const handle = el('div.panel-resize', {
+    id, role: 'separator', 'aria-orientation': 'vertical', tabindex: '0', 'aria-label': label,
     onkeydown: event => {
-      if (event.key === 'ArrowLeft') setWidth(width + INSPECTOR_KEY_STEP);
-      else if (event.key === 'ArrowRight') setWidth(width - INSPECTOR_KEY_STEP);
+      if (event.key === 'ArrowRight') setWidth(width + grows * PANEL_KEY_STEP);
+      else if (event.key === 'ArrowLeft') setWidth(width - grows * PANEL_KEY_STEP);
     },
   });
   handle.addEventListener('pointerdown', event => {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = width;
-    const move = moveEvent => setWidth(startWidth + startX - moveEvent.clientX);
+    const move = moveEvent => setWidth(startWidth + grows * (moveEvent.clientX - startX));
     const up = () => {
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
@@ -487,6 +491,24 @@ function inspectorResizer(builder) {
     document.addEventListener('pointerup', up);
   });
   return handle;
+}
+
+// The side panel can shrink to its narrowest or grow 30% past where it opens.
+function inspectorResizer(builder) {
+  // A new name, so a width kept under the old default does not hold the new one back.
+  return panelResizer(builder, {
+    id: 'inspector-resize', property: '--inspector-width', storageKey: 'inspector.panel-width',
+    min: INSPECTOR_MIN_WIDTH, start: INSPECTOR_DEFAULT_WIDTH, max: INSPECTOR_MAX_WIDTH, grows: -1,
+    label: t('Resize the side panel'),
+  });
+}
+
+function paletteResizer(builder) {
+  return panelResizer(builder, {
+    id: 'palette-resize', property: '--palette-width', storageKey: 'palette.width',
+    min: PALETTE_MIN_WIDTH, start: PALETTE_DEFAULT_WIDTH, max: PALETTE_MAX_WIDTH, grows: 1,
+    label: t('Resize the block list'),
+  });
 }
 
 async function renderBuilder(id) {
@@ -536,7 +558,7 @@ async function renderBuilder(id) {
     editor.clearNode);
 
   const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
-  builder.append(inspectorResizer(builder), el('div.canvas-log', null, logButton()));
+  builder.append(paletteResizer(builder), inspectorResizer(builder), el('div.canvas-log', null, logButton()));
   view.replaceChildren(builder);
 
   document.addEventListener('keydown', editor.onKey);

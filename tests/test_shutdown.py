@@ -289,6 +289,44 @@ class ShutdownTests(unittest.TestCase):
         self.assertEqual(self.api("GET", f"/api/runs/{job['run_id']}")["outcome"], "stopped")
         self.assert_next_run_works()
 
+    def finish_a_kept_run(self):
+        self.api("PUT", "/api/keep-browser", {"keep": True})
+        created = self.api("POST", "/api/flows", {"name": "Giữ"})
+        flow = created["flow"]
+        flow["steps"] = [{"id": "s1", "do": "goto", "url": f"{self.base}/demo/login"}]
+        self.api("PUT", f"/api/flows/{created['id']}", flow)
+        run_id = self.api("POST", "/api/runs", {"flow_id": created["id"], "mode": "full"})["run_id"]
+        deadline = time.monotonic() + 90
+        while not self.api("GET", f"/api/runs/{run_id}").get("outcome") and time.monotonic() < deadline:
+            time.sleep(0.5)
+        return run_id
+
+    def test_a_kept_browser_outlasts_the_run_and_the_next_run_closes_it(self):
+        app = self.start_app()
+        self.main_pid = app.pid
+        self.finish_a_kept_run()
+        # Well past the 10 seconds after which a finished run's worker is ended.
+        time.sleep(12)
+        answer = self.api("GET", "/api/active")
+        self.assertIsNone(answer["job"], "A kept browser must not block the next run")
+        self.assertEqual(answer["browser"], "kept")
+        self.assertTrue(self.browser_is_open())
+        self.api("PUT", "/api/keep-browser", {"keep": False})
+        self.assert_next_run_works()
+        lines = [line["text"] for line in self.api("GET", "/api/log")["lines"]]
+        self.assertTrue(any("Closed the browser kept open" in line for line in lines), lines[-5:])
+
+    def test_close_browser_ends_a_kept_browser(self):
+        app = self.start_app()
+        self.main_pid = app.pid
+        self.finish_a_kept_run()
+        self.assertEqual(self.api("GET", "/api/active")["browser"], "kept")
+        children = descendants(app.pid)
+        self.watched.update(children)
+        self.api("POST", "/api/active/close-browser", {})
+        self.assertIsNone(self.api("GET", "/api/active")["browser"])
+        self.assert_all_gone(children)
+
     def start_older_app(self):
         """The same app, but reporting an older version, like a window left open across an update."""
         code = (

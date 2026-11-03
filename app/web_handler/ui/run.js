@@ -88,6 +88,7 @@ async function renderRun(runId) {
     return state.summary;
   };
   const summary = await loadSummary();
+  const browserMode = await api('GET', '/api/browser-mode').then(data => data.mode).catch(() => 'visible');
   const flow = await api('GET', '/api/flows/' + summary.flow_id).then(data => data.flow).catch(() => null);
   const loop = flow && findLoop(flow);
   const loopSteps = loop ? loop.steps.map(step => step.id) : [];
@@ -122,6 +123,7 @@ async function renderRun(runId) {
       el('div.page-head', null,
         el('h1', { id: 'run-headline', text: headline }),
         el('span.spacer'),
+        keepBrowserButton(browserMode),
         !finished ? el('button.btn.danger', { id: 'run-stop', text: t('Stop after this row'), onclick: () => command('stop') }) : null,
         !finished ? el('button.btn.danger', { id: 'run-stop-now', text: t('Stop now'), onclick: stopActiveJob }) : null,
         el('a.btn', { href: '#/flow/' + summary.flow_id, text: t('Back to flow') })),
@@ -219,13 +221,17 @@ async function renderRun(runId) {
   };
   const countdownTimer = setInterval(showCountdown, 200);
   source.onmessage = message => {
-    apply(JSON.parse(message.data));
+    const event = JSON.parse(message.data);
+    apply(event);
     schedule();
+    // The dot on Keep browser shows at once whether the window stayed open.
+    if (event.type === 'finished') refreshActiveJob().then(schedule);
   };
   source.addEventListener('end', () => {
     source.close();
     clearInterval(countdownTimer);
     loadSummary().then(() => { state.summaryLoaded = true; schedule(); }).catch(() => {});
+    refreshActiveJob().then(schedule);
   });
   source.onerror = () => {
     // The browser reconnects by itself. When the run is gone from memory it cannot.

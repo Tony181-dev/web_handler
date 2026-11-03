@@ -571,5 +571,18 @@
   "The app was updated. Close its window and reopen it.": "App đã được cập nhật. Hãy đóng cửa sổ của app rồi mở lại.",
   "no name yet": "chưa đặt tên",
   "Left empty. After adding it, choose the password in the block: it is marked with a red !.": "Để trống. Sau khi thêm vào, hãy chọn mật khẩu trong khối: khối này có dấu ! đỏ.",
-  "Open the list in a new tab": "Mở danh sách trong tab mới"
+  "Open the list in a new tab": "Mở danh sách trong tab mới",
+  "Resize the block list": "Đổi kích thước cột khối bên trái",
+  "● Browser kept open": "● Trình duyệt đang được giữ mở",
+  "The browser is open: the flow is running.": "Trình duyệt đang mở: quy trình đang chạy.",
+  "The browser is open: kept after the run.": "Trình duyệt đang mở: được giữ lại sau lượt chạy.",
+  "Not used in Headless mode, where nobody would see a browser left open.": "Không dùng ở chế độ Headless, vì trình duyệt để mở ngầm sẽ không ai thấy.",
+  "When on, the browser stays open after Run and Run once, so you can carry on by hand. Close its window when you are done.": "Khi bật, trình duyệt vẫn mở sau \"Chạy\" và \"Chạy thử 1 lần\" để bạn thao tác tay tiếp. Làm xong thì tự đóng cửa sổ đó.",
+  "Keep browser: On": "Giữ trình duyệt: Bật",
+  "Keep browser: Off": "Giữ trình duyệt: Tắt",
+  "The browser is still open": "Trình duyệt vẫn đang mở",
+  "The window of the last run was kept open. Running, recording or checking again closes it by itself.": "Cửa sổ của lượt chạy trước đang được giữ mở. Khi chạy, ghi thao tác hoặc kiểm tra lần nữa, app sẽ tự đóng nó.",
+  "Close browser": "Đóng trình duyệt",
+  "Closed the browser kept open from the last run.": "Đã đóng trình duyệt được giữ mở từ lượt chạy trước.",
+  "The browser stays open. Close it when you are done.": "Trình duyệt vẫn được giữ mở. Làm xong thì tự đóng nó."
 }

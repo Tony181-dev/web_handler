@@ -29,8 +29,8 @@ FILLABLE = (
 def launch_options(mode=settings.BROWSER_VISIBLE):
     """Prefer the installed Chrome, and use the bundled Chromium only without one."""
     options = {"headless": mode == settings.BROWSER_HEADLESS or os.environ.get("WEB_HANDLER_HEADLESS") == "1"}
-    if mode == settings.BROWSER_OFFSCREEN and not options["headless"]:
-        options["args"] = ["--start-minimized"]
+    if not options["headless"]:
+        options["args"] = ["--start-minimized" if mode == settings.BROWSER_OFFSCREEN else "--start-maximized"]
     if setup_checks.find_chrome():
         options["channel"] = "chrome"
         return options
@@ -102,10 +102,10 @@ class ChromeDriver:
             pass
 
     def show(self):
-        """Bring the window up, also from the taskbar."""
+        """Bring the window up over the whole screen, also from the taskbar."""
         if not self.has_window:
             return
-        self._set_window_state("normal")
+        self._set_window_state("maximized")
         self._guard(self.page.bring_to_front)
         try:
             desktop.raise_browser_windows()

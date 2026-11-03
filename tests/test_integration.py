@@ -17,7 +17,7 @@ DATA = tempfile.mkdtemp(prefix="wh_test_")
 os.environ["WEB_HANDLER_DATA"] = DATA
 os.environ["WEB_HANDLER_HEADLESS"] = os.environ.get("WEB_HANDLER_HEADLESS", "1")
 
-from web_handler import demo_site, flow as flow_module, paths, runner, secret_store  # noqa: E402
+from web_handler import demo_site, flow as flow_module, paths, runner, secret_store, settings  # noqa: E402
 from web_handler.workers import WorkerSession  # noqa: E402
 
 SITE = demo_site.DemoSite()
@@ -78,7 +78,7 @@ class IntegrationBase(unittest.TestCase):
     def tearDown(self):
         self.folder.cleanup()
 
-    def run_job(self, flow, excel_path=None, mode="full", previous=None, on_event=None, run_id="run1", timeout=120, include_unknown=False):
+    def run_job(self, flow, excel_path=None, mode="full", previous=None, on_event=None, run_id="run1", timeout=120, include_unknown=False, browser_mode=None):
         flow_path = self.dir / "flow.json"
         flow_module.save_flow(flow_path, flow)
         run_dir = self.dir / run_id
@@ -87,6 +87,8 @@ class IntegrationBase(unittest.TestCase):
             "mode": mode, "journal_path": str(run_dir / "journal.jsonl"), "screenshot_dir": str(run_dir),
             "include_unknown": include_unknown,
         }
+        if browser_mode:
+            job["browser_mode"] = browser_mode
         if previous:
             job["previous_journal"] = str(self.dir / previous / "journal.jsonl")
         events = []
@@ -379,6 +381,49 @@ class DemoFlowTests(IntegrationBase):
         events, _ = self.run_job(flow, excel_path, mode="resume", previous="first", run_id="second")
         self.assertNotIn(3, self.statuses(events))
         self.assertIn(6, self.statuses(events))
+
+
+class KeepBrowserTests(IntegrationBase):
+    """The tests force a headless browser, so the job's own mode decides here as it would with a window."""
+
+    def setUp(self):
+        super().setUp()
+        settings.save_keep_browser(True)
+
+    def tearDown(self):
+        settings.save_keep_browser(False)
+        super().tearDown()
+
+    def flow(self):
+        return {"name": "Keep", "steps": [{"id": "s1", "do": "goto", "url": f"{self.base}/demo/login"}]}
+
+    def test_the_worker_stays_with_the_open_browser_until_told_to_stop(self):
+        finished = []
+
+        def on_event(event, session):
+            if event.get("type") != "finished":
+                return
+            finished.append(event)
+            # Still there well after the 10 seconds a finished run would get, only shorter for the test.
+            time.sleep(2)
+            finished.append(session.alive())
+            session.send({"cmd": "stop"})
+
+        events, _ = self.run_job(self.flow(), on_event=on_event, timeout=60)
+        self.assertEqual(finished[0]["outcome"], "finished", finished)
+        self.assertTrue(finished[0]["kept_open"])
+        self.assertTrue(finished[1], "The worker left without waiting")
+        self.assertEqual(events[-1]["type"], "finished")
+
+    def test_a_headless_run_never_keeps_its_browser(self):
+        events, _ = self.run_job(self.flow(), browser_mode="headless", timeout=60)
+        self.assertEqual(events[-1]["outcome"], "finished")
+        self.assertFalse(events[-1]["kept_open"])
+
+    def test_turned_off_the_browser_closes_as_before(self):
+        settings.save_keep_browser(False)
+        events, _ = self.run_job(self.flow(), timeout=60)
+        self.assertFalse(events[-1]["kept_open"])
 
 
 class OcrBlockTests(IntegrationBase):

@@ -34,3 +34,14 @@ def save_browser_mode(mode):
     if mode not in BROWSER_MODES:
         raise ValueError(mode)
     update(browser_mode=mode)
+
+
+def keep_browser():
+    """Whether a run leaves its window open at the end, so the person can carry on by hand."""
+    return read().get("keep_browser") is True
+
+
+def save_keep_browser(keep):
+    if not isinstance(keep, bool):
+        raise ValueError(keep)
+    update(keep_browser=keep)

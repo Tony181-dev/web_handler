@@ -201,13 +201,44 @@ def run_flow(job, commands):
             writer.close()
         journal.write(type="finish", outcome=outcome, message=message, result_file=result_file)
         journal.close()
+        kept = keeps_browser(job, driver, commands)
         # Reported first: closing a browser someone already closed can hang.
         emit({
             "type": "finished", "outcome": outcome, "message": message, "result_file": result_file,
-            "counts": instance.counts if instance else {},
+            "counts": instance.counts if instance else {}, "kept_open": kept,
         })
+        if kept:
+            keep_browser_open(driver, commands)
         driver.close()
     return 0
+
+
+def keeps_browser(job, driver, commands):
+    """A window can be left to the person. A headless browser cannot, nobody would know it is there."""
+    mode = job.get("browser_mode") or app_settings.BROWSER_VISIBLE
+    # Read now, so turning it on or off during the run still counts.
+    return (
+        mode != app_settings.BROWSER_HEADLESS and app_settings.keep_browser()
+        and not commands.closed and driver.is_open()
+    )
+
+
+def keep_browser_open(driver, commands):
+    """Wait until the person closes the window, or the app needs the browser for something else."""
+    try:
+        driver.show()
+    except BrowserClosed:
+        return
+    # A stop sent during the run has already been answered by ending it.
+    while not commands.queue.empty():
+        commands.queue.get_nowait()
+    while not commands.closed:
+        try:
+            command = commands.next(driver, 0.5)
+        except BrowserClosed:
+            return
+        if command and command.get("cmd") in ("stop", "cancel"):
+            return
 
 
 def run_inspector(job, commands):

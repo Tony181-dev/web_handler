@@ -397,6 +397,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(app.make_demo())
         if head == "browser-mode":
             return self.api_browser_mode(method)
+        if head == "keep-browser":
+            return self.api_keep_browser(method)
         if head == "active":
             return self.api_active(method, rest)
         if head == "excel" and method == "POST":
@@ -425,12 +427,25 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(t("Not found."), 404)
         return self.send_json({"mode": app_settings.browser_mode()})
 
+    def api_keep_browser(self, method):
+        if method == "PUT":
+            try:
+                app_settings.save_keep_browser(self.read_json().get("keep"))
+            except ValueError as error:
+                raise ApiError(t("Invalid command.")) from error
+        elif method != "GET":
+            raise ApiError(t("Not found."), 404)
+        return self.send_json({"keep": app_settings.keep_browser()})
+
     def api_active(self, method, rest):
         jobs = self.app.jobs
         if method == "GET" and not rest:
-            return self.send_json({"job": jobs.active_job()})
+            return self.send_json({"job": jobs.active_job(), "browser": jobs.browser_state()})
         if method == "POST" and rest == ["stop"]:
             jobs.stop_active()
+            return self.send_json({"ok": True})
+        if method == "POST" and rest == ["close-browser"]:
+            jobs.close_kept_browser()
             return self.send_json({"ok": True})
         raise ApiError(t("Not found."), 404)
 

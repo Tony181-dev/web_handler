@@ -472,6 +472,32 @@ class BuilderTests(AppTestCase):
         expect(self.page.locator("#inspector")).to_be_visible()
         self.assertAlmostEqual(self.page.locator("#inspector").bounding_box()["width"], start * 1.3, delta=1)
 
+    def drag_palette(self, offset):
+        handle = self.page.locator("#palette-resize").bounding_box()
+        self.page.mouse.move(handle["x"] + handle["width"] / 2, 400)
+        self.page.mouse.down()
+        self.page.mouse.move(handle["x"] + handle["width"] / 2 + offset, 400, steps=5)
+        self.page.mouse.up()
+        return self.page.locator(".palette").bounding_box()["width"]
+
+    def test_block_list_opens_35_percent_wider_and_shrinks_back_to_the_old_width(self):
+        self.new_flow()
+        palette = self.page.locator(".palette")
+        tool_height = self.page.locator(".tool[data-kind=click]").bounding_box()["height"]
+        self.assertAlmostEqual(palette.bounding_box()["width"], round(128 * 1.35), delta=1)
+        self.assertAlmostEqual(self.drag_palette(-500), 128, delta=1, msg="Cannot go below the old width")
+        self.assertAlmostEqual(self.drag_palette(30), 158, delta=2)
+        self.assertAlmostEqual(self.drag_palette(500), round(round(128 * 1.35) * 1.3), delta=1)
+        self.assertAlmostEqual(self.page.locator(".tool[data-kind=click]").bounding_box()["height"], tool_height, delta=1)
+        canvas = self.page.locator("#canvas").bounding_box()
+        self.assertAlmostEqual(palette.bounding_box()["x"] + palette.bounding_box()["width"], canvas["x"], delta=1)
+        self.page.reload()
+        expect(self.page.locator(".palette")).to_be_visible()
+        self.assertAlmostEqual(self.page.locator(".palette").bounding_box()["width"], round(round(128 * 1.35) * 1.3), delta=1)
+        self.page.locator("#palette-resize").focus()
+        self.page.keyboard.press("ArrowLeft")
+        self.assertLess(self.page.locator(".palette").bounding_box()["width"], round(round(128 * 1.35) * 1.3))
+
     def test_sidebar_resizes_with_the_keyboard(self):
         self.new_flow()
         start = self.page.locator("#inspector").bounding_box()["width"]
@@ -754,7 +780,7 @@ class LiveCheckTests(AppTestCase):
             self.page.locator(f".tool[data-kind={kind}]").click()
         self.page.fill("#target-selector", "#user")
         self.page.click("#check-target")
-        expect(self.page.locator("#check-result")).to_contain_text("Block 1 (Open link)")
+        expect(self.page.locator("#check-result")).to_contain_text('Block 1 ("Open link")')
         expect(self.page.locator("#canvas .node[data-step=s1]")).to_have_class(re.compile("failed"))
 
     def test_manual_block_waits_for_continue_and_can_be_stopped(self):
@@ -1285,13 +1311,75 @@ class UndoRedoTests(AppTestCase):
 
 class BrowserModeButtonTests(AppTestCase):
     def tearDown(self):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{self.port}/api/browser-mode?key={self.key}", method="PUT",
-            data=json.dumps({"mode": "visible"}).encode("utf-8"), headers={"Content-Type": "application/json"},
-        )
-        with NO_PROXY.open(request, timeout=10):
-            pass
+        for path, body in (("browser-mode", {"mode": "visible"}), ("keep-browser", {"keep": False})):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{self.port}/api/{path}?key={self.key}", method="PUT",
+                data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"},
+            )
+            with NO_PROXY.open(request, timeout=10):
+                pass
         super().tearDown()
+
+    def test_keep_browser_turns_on_stays_on_and_is_off_in_headless(self):
+        self.new_flow()
+        keep = self.page.locator("#keep-browser")
+        expect(keep).to_have_text("Keep browser: Off")
+        self.assertLess(self.page.locator("#browser-mode").bounding_box()["x"], keep.bounding_box()["x"])
+        self.assertLess(keep.bounding_box()["x"], self.page.locator("#undo").bounding_box()["x"])
+        keep.click()
+        expect(keep).to_have_text("Keep browser: On")
+        expect(keep).to_have_attribute("aria-pressed", "true")
+        self.shot("keep_browser")
+        self.page.reload()
+        expect(self.page.locator("#keep-browser")).to_have_text("Keep browser: On")
+        self.page.locator("#browser-mode").click()
+        self.page.locator("#browser-mode").click()
+        expect(self.page.locator("#browser-mode")).to_have_text("Browser: Headless")
+        expect(self.page.locator("#keep-browser")).to_be_disabled()
+        expect(self.page.locator("#keep-browser")).to_have_attribute("aria-pressed", "false")
+        expect(self.page.locator("#keep-browser")).to_have_attribute("title", re.compile("Headless"))
+
+    def test_keep_browser_is_translated(self):
+        self.new_flow()
+        self.page.select_option("#language", "vi")
+        expect(self.page.locator("html")).to_have_attribute("lang", "vi")
+        expect(self.page.locator("#keep-browser")).to_have_text("Giữ trình duyệt: Tắt")
+        self.page.select_option("#language", "en")
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+
+    def test_dot_and_top_bar_show_a_browser_kept_open(self):
+        closed = []
+
+        def active(route):
+            route.fulfill(json={"job": None, "browser": None if closed else "kept"})
+
+        def close(route):
+            closed.append(True)
+            route.fulfill(json={"ok": True})
+
+        self.page.route("**/api/active", active)
+        self.page.route("**/api/active/close-browser*", close)
+        self.new_flow()
+        expect(self.page.locator("#keep-browser")).to_have_attribute("data-browser", "kept")
+        expect(self.page.locator("#keep-browser")).to_have_attribute("title", re.compile("kept after the run"))
+        expect(self.page.locator("#active-job")).to_have_text("● Browser kept open")
+        self.page.click("#active-job")
+        self.page.click("[data-action=close-kept-browser]")
+        expect(self.page.locator("#active-job")).to_be_hidden()
+        expect(self.page.locator("#keep-browser")).to_have_attribute("data-browser", "none")
+        self.assertEqual(closed, [True])
+        # A kept browser does not stop the next run from being confirmed.
+        self.page.unroute("**/api/active")
+        self.page.click("#run-full")
+        expect(self.page.locator("[data-action=confirm-run], [data-action=close]").first).to_be_visible()
+
+    def test_dot_pulses_while_a_flow_runs(self):
+        self.page.route("**/api/active", lambda route: route.fulfill(json={
+            "job": {"kind": "run", "run_id": "x", "flow_id": "y", "flow_name": "z"}, "browser": "running",
+        }))
+        self.new_flow()
+        expect(self.page.locator("#keep-browser")).to_have_attribute("data-browser", "running")
+        expect(self.page.locator("#keep-browser")).to_have_attribute("title", re.compile("flow is running"))
 
     def test_button_shows_the_current_mode_and_switches_through_all_three(self):
         self.new_flow()
