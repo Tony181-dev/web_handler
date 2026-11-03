@@ -37,7 +37,11 @@ python tests/test_ui.py
 python tools/build_package.py
 ```
 
-Để chia sẻ cho người khác: bấm đúp `web_handler/Build.bat`, rồi gửi file `dist/WebHandler-Setup-<version>.exe`.
+Đóng gói, cập nhật bản đang dùng và chia sẻ: bấm đúp `web_handler/Install.bat` trong thư mục mã nguồn. Nó tạo `dist/WebHandler-Setup-<version>.exe` và file zip, cập nhật `dist/WebHandler` mà vẫn giữ `data`, rồi mở thư mục `dist`. Xong thì đóng và mở lại app. Muốn chia sẻ thì gửi file Setup.
+
+Ba file `.bat` đã gộp còn hai (từ 2026-11-03 không còn `Build.bat`):
+- `Start.bat`: mở app, dùng hằng ngày.
+- `Install.bat`: một file cho hai việc, tự nhận ra mình đang ở đâu. Trong thư mục mã nguồn (có `tools/build_package.py`) thì đóng gói như trên, các tùy chọn như `--no-installer` được chuyển cho `build_package.py`. Trong zip đã giải nén thì cài vào `%LOCALAPPDATA%\Programs\WebHandler` hoặc thư mục được truyền vào, dùng khi công ty chặn exe.
 
 ## Tính năng đã có
 
@@ -238,6 +242,7 @@ python tools/build_package.py
 - Chế độ `Visible` mở Chrome phóng to hết màn hình (`--start-maximized`, và `show()` đặt `maximized` thay vì `normal`).
 - Cột khối bên trái rộng thêm 35%, kéo giãn được. Code kéo giãn của hai cột dùng chung `panelResizer` trong `builder.js`.
 - Thêm khối `If` với hai nhánh Yes/No, nút View ngang/dọc và Zoom cho sơ đồ.
+- Bỏ `Build.bat`, gộp việc đóng gói vào `Install.bat`.
 
 ## File chính
 
@@ -245,7 +250,7 @@ Toàn bộ nằm trong `web_handler/`.
 
 | File hoặc thư mục | Vai trò |
 |---|---|
-| `Start.bat`, `Install.bat`, `Build.bat`, `README.txt`, `README.vi.txt` | Khởi động app, cài bằng script, hướng dẫn cho người dùng |
+| `Start.bat`, `Install.bat`, `README.txt`, `README.vi.txt` | Khởi động app; đóng gói (trong mã nguồn) hoặc cài bằng script (trong zip); hướng dẫn cho người dùng |
 | `app/main.py` | Điểm vào, dùng lại app nếu đang chạy |
 | `app/web_handler/server.py` | Server cục bộ và API |
 | `app/web_handler/jobs.py`, `workers.py`, `worker.py` | Quản lý và chạy tiến trình làm việc với trình duyệt |

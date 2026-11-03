@@ -37,7 +37,7 @@ AN TOÀN DỮ LIỆU
 - Hãy chắc chắn quy định của hệ thống cho phép tự động hóa, kể cả việc đọc captcha, trước khi dùng.
 
 CHIA SẺ CHO NGƯỜI KHÁC
-Bấm đúp Build.bat trong thư mục mã nguồn. Lần đầu cần có mạng, Python 3 và Inno Setup 6.
+Bấm đúp Install.bat trong thư mục mã nguồn. Nó đóng gói app, lần đầu cần có mạng, Python 3 và Inno Setup 6.
 Gửi file WebHandler-Setup-<phiên bản>.exe vừa tạo. Người nhận chỉ cần chạy đúng một file đó.
 
 GỠ

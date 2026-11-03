@@ -38,7 +38,7 @@ KEEPING YOUR DATA SAFE
 - Make sure the rules of the system you use allow automation, including reading captchas, before using this tool.
 
 SHARING IT WITH SOMEONE
-Double-click Build.bat in the source folder. It needs internet the first time, Python 3 and Inno Setup 6.
+Double-click Install.bat in the source folder. It builds the package and needs internet the first time, Python 3 and Inno Setup 6.
 Send the WebHandler-Setup-<version>.exe it creates. The other person only runs that one file.
 
 UNINSTALL

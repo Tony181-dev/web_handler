@@ -1,11 +1,17 @@
 @echo off
 setlocal
 chcp 65001 >nul
-title Web Handler - Install
 
-rem Installs from the unpacked zip, for machines where the Setup exe is blocked.
-rem Usage: Install.bat [target folder]. No admin rights needed. The data folder is never touched.
+rem One file for both ends:
+rem - In the source folder it builds the package: dist\WebHandler-Setup-<version>.exe and the zip to send,
+rem   and brings dist\WebHandler up to date, keeping its data. Options go to tools\build_package.py.
+rem   Needs internet the first time, Python 3 and Inno Setup 6.
+rem - In the unpacked zip it installs, for machines where the Setup exe is blocked.
+rem   Usage: Install.bat [target folder]. No admin rights needed. The data folder is never touched.
 set "SOURCE=%~dp0"
+if exist "%SOURCE%tools\build_package.py" goto build
+
+title Web Handler - Install
 set "TARGET=%~1"
 if "%TARGET%"=="" set "TARGET=%LOCALAPPDATA%\Programs\WebHandler"
 set "WEB_HANDLER_NO_PAUSE=1"
@@ -43,4 +49,35 @@ exit /b 1
 
 :failed
 echo Could not copy the files to %TARGET%.
+exit /b 1
+
+:build
+title Web Handler - Build
+cd /d "%SOURCE%"
+set "PYTHON="
+py -3 -c "import sys" >nul 2>&1 && set "PYTHON=py -3"
+if defined PYTHON goto run_build
+python -c "import sys" >nul 2>&1 && set "PYTHON=python"
+if defined PYTHON goto run_build
+for /d %%F in ("%LOCALAPPDATA%\Programs\Python\Python3*") do if exist "%%F\python.exe" set "PYTHON="%%F\python.exe""
+if defined PYTHON goto run_build
+echo Python 3 was not found. Install it from https://www.python.org/downloads/ and run this again.
+goto build_failed
+
+:run_build
+%PYTHON% tools\build_package.py %*
+if errorlevel 1 goto build_failed
+echo.
+echo Done. dist\WebHandler is up to date: close the app window and open it again with dist\WebHandler\Start.bat.
+echo To share it, send the WebHandler-Setup file in the dist folder. The other person only runs it:
+echo no internet, no admin rights.
+if defined WEB_HANDLER_NO_PAUSE exit /b 0
+start "" "%~dp0dist"
+pause
+exit /b 0
+
+:build_failed
+echo.
+echo The build did not finish.
+if not defined WEB_HANDLER_NO_PAUSE pause
 exit /b 1
