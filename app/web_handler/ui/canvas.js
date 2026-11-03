@@ -15,11 +15,38 @@ function sourceOf(value) {
   return ['text'];
 }
 
+// The lists of blocks a block holds: a loop has one, an "If" block its Yes and No branches.
+function branchesOf(step) {
+  if (step.do === 'loop') return [step.steps || []];
+  if (step.do === 'if') return [step.then || [], step.else || []];
+  return [];
+}
+
+// Every block in these lists and the blocks they hold, in running order.
+function flattenSteps(steps) {
+  const all = [];
+  const visit = list => list.forEach(step => {
+    all.push(step);
+    branchesOf(step).forEach(visit);
+  });
+  visit(steps);
+  return all;
+}
+
+function containsStep(steps, id) {
+  return flattenSteps(steps).some(step => step.id === id);
+}
+
+// Blocks drawn as a frame around other blocks, on a row of their own.
+function isFrame(step) {
+  return step.do === 'loop' || step.do === 'if';
+}
+
 // Same rule as stop_column() in flow.py: the first column the loop's blocks use decides where rows end.
 function stopColumn(flow) {
   const loop = findLoop(flow);
   if (!loop) return '';
-  for (const step of loop.steps) {
+  for (const step of flattenSteps(loop.steps)) {
     for (const key of ['url', 'account', 'value', 'equals', 'contains', 'url_contains', 'url_not_contains']) {
       const match = /\{\{\s*([A-Z]{1,3})\s*\}\}/.exec(step[key] || '');
       if (match) return match[1];
@@ -48,10 +75,25 @@ function stepSummary(step) {
       return name;
     }
     case 'verify': return step.url_not_contains ? t('URL without {text}', { text: step.url_not_contains }) : step.url_contains ? t('URL with {text}', { text: step.url_contains }) : (target || t('no condition yet'));
+    case 'if': return conditionText(step);
     case 'manual_pause': return step.message || t('click Continue');
     case 'wait': return t('{seconds} s', { seconds: step.seconds });
     // A template's blank block says what it is for.
     default: return target || step.note || t('no element yet');
+  }
+}
+
+// What an "If" block asks, as a sentence.
+function conditionText(step) {
+  const element = step.target && step.target.primary;
+  const value = step.value || '…';
+  if (!element && step.test !== 'url_contains') return t('no element yet');
+  switch (step.test) {
+    case 'exists': return step.negate ? t('{element} is not on the page', { element }) : t('{element} is on the page', { element });
+    case 'equals': return step.negate ? t('{element} does not equal {value}', { element, value }) : t('{element} equals {value}', { element, value });
+    case 'contains': return step.negate ? t('{element} does not contain {value}', { element, value }) : t('{element} contains {value}', { element, value });
+    case 'url_contains': return step.negate ? t('URL without {text}', { text: value }) : t('URL with {text}', { text: value });
+    default: return t('no condition yet');
   }
 }
 
@@ -62,6 +104,12 @@ function stepIsIncomplete(step) {
   if (targetSteps.includes(step.do) && !(step.target && step.target.primary)) return true;
   if ((step.do === 'fill' || step.do === 'select') && !step.value) return true;
   if ((step.do === 'read' || step.do === 'ocr') && !step.save_to_var && !step.save_to_column) return true;
+  if (step.do === 'if') {
+    if (!['exists', 'equals', 'contains', 'url_contains'].includes(step.test)) return true;
+    if (step.test !== 'url_contains' && !(step.target && step.target.primary)) return true;
+    if (step.test !== 'exists' && !step.value) return true;
+    if (!(step.then || []).length && !(step.else || []).length) return true;
+  }
   if (step.do === 'verify') {
     const hasUrl = step.url_contains || step.url_not_contains;
     const hasElement = (step.equals || step.contains) && step.target && step.target.primary;
@@ -75,7 +123,7 @@ function nextStepId(flow) {
   const visit = steps => steps.forEach(step => {
     const number = parseInt(String(step.id || '').replace(/\D/g, ''), 10);
     if (number > highest) highest = number;
-    if (step.steps) visit(step.steps);
+    branchesOf(step).forEach(visit);
   });
   visit(flow.steps);
   return 's' + (highest + 1);
@@ -86,61 +134,90 @@ function findLoop(flow) {
 }
 
 function findStep(flow, id) {
-  for (const step of flow.steps) {
-    if (step.id === id) return step;
-    if (step.steps) {
-      const child = step.steps.find(item => item.id === id);
-      if (child) return child;
-    }
-  }
-  return null;
+  return flattenSteps(flow.steps).find(step => step.id === id) || null;
 }
 
 // The blocks a run goes through before this one, with the loop's blocks taken once.
+// A block in a branch is reached through that branch, whatever the condition would say.
 function stepsBefore(flow, id) {
   const before = [];
-  for (const step of flow.steps) {
-    for (const item of step.do === 'loop' ? step.steps : [step]) {
-      if (item.id === id) return before;
-      before.push(item);
+  const visit = steps => {
+    for (const step of steps) {
+      if (step.id === id) return true;
+      if (step.do === 'loop') {
+        if (visit(step.steps)) return true;
+      } else if (step.do === 'if' && containsStep(branchesOf(step).flat(), id)) {
+        return visit(branchesOf(step).find(branch => containsStep(branch, id)));
+      } else {
+        before.push(step);
+      }
     }
-    if (step.id === id) return before;
-  }
+    return false;
+  };
+  visit(flow.steps);
   return before;
 }
 
 function listContaining(flow, id) {
-  if (flow.steps.some(step => step.id === id)) return flow.steps;
-  const loop = findLoop(flow);
-  return loop && loop.steps.some(step => step.id === id) ? loop.steps : null;
+  const search = steps => {
+    if (steps.some(step => step.id === id)) return steps;
+    for (const step of steps) {
+      for (const branch of branchesOf(step)) {
+        const found = search(branch);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return search(flow.steps);
+}
+
+// The list a lane of the diagram shows: top, loop, or if:<id>:then and if:<id>:else for the branches.
+function laneList(flow, name) {
+  if (name === 'top') return flow.steps;
+  if (name === 'loop') return findLoop(flow).steps;
+  const [, id, branch] = name.split(':');
+  return findStep(flow, id)[branch];
 }
 
 function renderCanvas(editor) {
   const canvas = editor.canvasNode;
-  const scroll = canvas.scrollTop;
+  const scrollTop = canvas.scrollTop;
+  const scrollLeft = canvas.scrollLeft;
   const flow = editor.flow;
   canvas.replaceChildren();
+  canvas.classList.toggle('vertical', editor.view === 'vertical');
 
   // Always there, so that the bar appearing does not push the blocks down.
   const loop = findLoop(flow);
   const showBar = editor.selection.size > 0 && !(loop && editor.selection.has(loop.id));
   canvas.append(el('div.selection-slot', null, showBar ? renderSelectionBar(editor) : null));
 
+  const content = el('div.canvas-content', { id: 'canvas-content', style: `zoom:${editor.zoom}` });
   if (!flow.steps.length) {
-    canvas.append(el('div.canvas-empty', null,
+    content.append(el('div.canvas-empty', null,
       el('h2', { text: t('Drag blocks here from the left') }),
       el('p', { text: t('Or click Record, and the tool creates the blocks as you do the work once by hand.'), style: 'margin-top:6px' })));
   }
-  const lane = el('div.lane', { 'data-lane': 'top' });
-  flow.steps.forEach((step, index) => {
-    if (step.do === 'loop') {
-      lane.append(el('div.item.block', { 'data-index': index }, renderLoop(editor, step)));
-    } else {
-      lane.append(renderItem(editor, step, index, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop'));
-    }
+  content.append(renderLane(editor, flow.steps, 'top'));
+  canvas.append(content);
+  canvas.scrollTop = scrollTop;
+  canvas.scrollLeft = scrollLeft;
+}
+
+function renderLane(editor, steps, name, emptyText) {
+  const lane = el('div.lane', { 'data-lane': name });
+  steps.forEach((step, index) => {
+    if (step.do === 'loop') lane.append(el('div.item.block', { 'data-index': index }, renderLoop(editor, step)));
+    else if (step.do === 'if') lane.append(el('div.item.block', { 'data-index': index }, renderIf(editor, step)));
+    else lane.append(renderItem(editor, step, index, index < steps.length - 1 && !isFrame(steps[index + 1])));
   });
-  canvas.append(lane);
-  canvas.scrollTop = scroll;
+  if (!steps.length && emptyText) lane.append(el('div.loop-empty', { text: emptyText }));
+  return lane;
+}
+
+function arrowNode() {
+  return el('div.arrow', { text: '→', 'aria-hidden': 'true' });
 }
 
 function renderItem(editor, step, index, withArrow) {
@@ -164,11 +241,11 @@ function renderItem(editor, step, index, withArrow) {
   }, el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
   node.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, node.parentElement.classList.contains('node-pair') ? node.parentElement : node));
   const chip = variableChip(step);
-  if (!chip) return el('div.item', { 'data-index': index }, node, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  if (!chip) return el('div.item', { 'data-index': index }, node, withArrow ? arrowNode() : null);
   // The block and its variable are one piece: dragging either moves both.
   const pair = el('div.node-pair', null, node, chip);
   chip.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, pair));
-  return el('div.item', { 'data-index': index }, pair, withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+  return el('div.item', { 'data-index': index }, pair, withArrow ? arrowNode() : null);
 }
 
 // The variable a reading block fills, as a square beside it, so later blocks can be seen to use it.
@@ -182,9 +259,7 @@ function variableChip(step) {
 
 function renderLoop(editor, loop) {
   const selected = editor.selection.has(loop.id);
-  const lane = el('div.lane', { 'data-lane': 'loop' });
-  loop.steps.forEach((step, index) => lane.append(renderItem(editor, step, index, index < loop.steps.length - 1)));
-  if (!loop.steps.length) lane.append(el('div.loop-empty', { text: t('Drop blocks here to repeat them.') }));
+  const lane = renderLane(editor, loop.steps, 'loop', t('Drop blocks here to repeat them.'));
   const description = loop.source === 'count' ? t('{count} time(s)', { count: loop.count || 1 }) : t('each Excel row');
   const frame = el('div.loop-frame' + (selected ? '.selected' : ''), { 'data-loop': loop.id },
     el('div.loop-head', null,
@@ -198,7 +273,37 @@ function renderLoop(editor, loop) {
       })),
     lane);
   frame.addEventListener('click', event => {
-    if (!event.target.closest('.node')) editor.select(loop.id);
+    if (!event.target.closest('.node, .if-frame')) editor.select(loop.id);
+  });
+  return frame;
+}
+
+// An "If" block: its condition on top, then the Yes and No branches, each a lane of its own.
+function renderIf(editor, step) {
+  const classes = ['if-frame'];
+  if (editor.selection.has(step.id)) classes.push(editor.selection.size > 1 ? 'multi' : 'selected');
+  if (stepIsIncomplete(step)) classes.push('invalid');
+  if (editor.litSteps.has(step.id)) classes.push('lit');
+  if (editor.failedStep === step.id) classes.push('failed');
+  const head = el('div.if-head', {
+    'data-step': step.id, tabindex: '0', role: 'button',
+    'aria-label': `${STEP_NAMES.if}: ${conditionText(step)}`,
+    onkeydown: event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        editor.select(step.id);
+      }
+    },
+  }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { text: conditionText(step), title: conditionText(step) }));
+  const branch = (key, label) => el('div.branch', { 'data-branch': key },
+    el('div.branch-label', { text: label }),
+    renderLane(editor, step[key] || [], `if:${step.id}:${key}`, t('Drop blocks here.')));
+  const frame = el('div.' + classes.join('.'), { 'data-if': step.id }, head,
+    el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No'))));
+  head.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, frame));
+  frame.addEventListener('click', event => {
+    event.stopPropagation();
+    if (!event.target.closest('.node')) editor.select(step.id);
   });
   return frame;
 }
@@ -219,22 +324,32 @@ function renderSelectionBar(editor) {
     problem && editor.selection.size > 1 ? el('span.muted', { id: 'loop-problem', text: problem, title: problem }) : null);
 }
 
-// The same diagram, read-only, showing how far a run has got. stateOf(id) gives a class or null.
-function renderRunDiagram(flow, stateOf) {
+// The same diagram, read-only, showing how far a run has got. stateOf(id) gives a class or null,
+// branchOf(id) the branch an "If" block took, if it has run.
+function renderRunDiagram(flow, stateOf, branchOf, vertical) {
   const item = (step, withArrow) => {
     const node = el('div.' + ['node', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-step': step.id },
       el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
     const chip = variableChip(step);
-    return el('div.item', null, chip ? el('div.node-pair', null, node, chip) : node,
-      withArrow ? el('div.arrow', { text: '→', 'aria-hidden': 'true' }) : null);
+    return el('div.item', null, chip ? el('div.node-pair', null, node, chip) : node, withArrow ? arrowNode() : null);
   };
-  return el('div.lane', null, flow.steps.map((step, index) => {
-    if (step.do !== 'loop') return item(step, index < flow.steps.length - 1 && flow.steps[index + 1].do !== 'loop');
-    const description = step.source === 'count' ? t('{count} time(s)', { count: step.count || 1 }) : t('each Excel row');
-    return el('div.item.block', null, el('div.loop-frame.readonly', null,
-      el('div.loop-head', { text: `↻ ${STEP_NAMES.loop} · ${description}` }),
-      el('div.lane', null, step.steps.map((child, position) => item(child, position < step.steps.length - 1)))));
+  const lane = steps => el('div.lane', null, steps.map((step, index) => {
+    if (step.do === 'loop') {
+      const description = step.source === 'count' ? t('{count} time(s)', { count: step.count || 1 }) : t('each Excel row');
+      return el('div.item.block', null, el('div.loop-frame.readonly', null,
+        el('div.loop-head', { text: `↻ ${STEP_NAMES.loop} · ${description}` }), lane(step.steps)));
+    }
+    if (step.do === 'if') {
+      const taken = branchOf ? branchOf(step.id) : null;
+      const branch = (key, label) => el('div.' + ['branch', taken === key ? 'taken' : '', taken && taken !== key ? 'skipped' : ''].filter(Boolean).join('.'), { 'data-branch': key },
+        el('div.branch-label', { text: label }), lane(step[key] || []));
+      return el('div.item.block', null, el('div.' + ['if-frame', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-if': step.id },
+        el('div.if-head', { 'data-step': step.id }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { text: conditionText(step) })),
+        el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No')))));
+    }
+    return item(step, index < steps.length - 1 && !isFrame(steps[index + 1]));
   }));
+  return el('div.run-diagram' + (vertical ? '.vertical' : ''), null, lane(flow.steps));
 }
 
 function selectionIndexes(editor) {
@@ -281,22 +396,29 @@ function removeLoop(editor) {
 
 // Dragging
 
-function dropPosition(editor, x, y, movingLoopAllowed) {
-  // The innermost lane under the pointer takes the drop, else the main lane.
+// depth says where a block may go: 'top' only in the main lane (a loop), 'loop' also in the loop
+// (an "If" block), 'any' also in the branches of an "If" block.
+function dropPosition(editor, x, y, depth) {
+  // The innermost lane under the pointer that may take the block, else the main lane.
   const canvasBox = editor.canvasNode.getBoundingClientRect();
   if (x < canvasBox.left || x > canvasBox.right || y < canvasBox.top || y > canvasBox.bottom) return null;
   const hovered = document.elementFromPoint(x, y);
-  const frame = hovered && hovered.closest ? hovered.closest('.loop-frame') : null;
-  const lane = frame && movingLoopAllowed ? frame.querySelector('[data-lane=loop]') : editor.canvasNode.querySelector('[data-lane=top]');
+  const allowed = zone => (zone.classList.contains('branch') ? depth === 'any' : depth !== 'top');
+  let zone = hovered && hovered.closest ? hovered.closest('.branch, .loop-frame') : null;
+  while (zone && !allowed(zone)) zone = zone.parentElement.closest('.branch, .loop-frame');
+  const lane = zone ? zone.querySelector(':scope > .lane') : editor.canvasNode.querySelector('[data-lane=top]');
   if (!lane) return null;
+  const vertical = editor.view === 'vertical';
   const items = Array.from(lane.children).filter(child => child.classList.contains('item'));
   let index = items.length;
   for (let position = 0; position < items.length; position++) {
     const box = items[position].getBoundingClientRect();
-    const before = y < box.top || (y <= box.bottom && x < box.left + box.width / 2);
+    const before = vertical
+      ? y < box.top + box.height / 2
+      : y < box.top || (y <= box.bottom && x < box.left + box.width / 2);
     if (before) { index = position; break; }
   }
-  return { lane: lane.dataset.lane, index, items };
+  return { lane: lane.dataset.lane, index, items, vertical };
 }
 
 function placeMarker(marker, position, pointerY) {
@@ -308,6 +430,16 @@ function placeMarker(marker, position, pointerY) {
   marker.style.display = 'block';
   const anchor = items[Math.min(index, items.length - 1)];
   const box = anchor.getBoundingClientRect();
+  if (position.vertical) {
+    // Blocks stand in a column, so the place between two of them is a line across.
+    const node = anchor.querySelector('.node-pair, .node, .loop-frame, .if-frame') || anchor;
+    marker.style.left = box.left + 'px';
+    marker.style.top = (index >= items.length ? box.bottom + 2 : box.top - 3) + 'px';
+    marker.style.width = Math.max(node.getBoundingClientRect().width, 40) + 'px';
+    marker.style.height = '3px';
+    return;
+  }
+  marker.style.width = '';
   // The next block is on a lower row, but the pointer is still at the end of this one.
   const previous = index > 0 && index < items.length ? items[index - 1] : null;
   if (previous && pointerY < box.top && !previous.classList.contains('block')) {
@@ -322,7 +454,7 @@ function placeMarker(marker, position, pointerY) {
   marker.style.height = Math.max(box.height, 40) + 'px';
 }
 
-function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
+function runDrag(event, label, onDrop, onStart, onEnd, depth) {
   const editor = runDrag.editor;
   const startX = event.clientX;
   const startY = event.clientY;
@@ -341,7 +473,7 @@ function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
     }
     ghost.style.left = moveEvent.clientX + 10 + 'px';
     ghost.style.top = moveEvent.clientY + 8 + 'px';
-    const position = dropPosition(editor, moveEvent.clientX, moveEvent.clientY, allowLoop);
+    const position = dropPosition(editor, moveEvent.clientX, moveEvent.clientY, depth);
     if (position) placeMarker(marker, position, moveEvent.clientY);
     else marker.style.display = 'none';
   };
@@ -353,7 +485,7 @@ function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
     if (marker) marker.remove();
     if (onEnd) onEnd();
     if (!started) { if (onDrop.click) onDrop.click(); return; }
-    const position = dropPosition(editor, upEvent.clientX, upEvent.clientY, allowLoop);
+    const position = dropPosition(editor, upEvent.clientX, upEvent.clientY, depth);
     if (position) onDrop(position);
   };
   const cancel = () => {
@@ -369,20 +501,25 @@ function runDrag(event, label, onDrop, onStart, onEnd, allowLoop) {
   document.addEventListener('pointercancel', cancel);
 }
 
+// Where a block of this kind may be dropped, as dropPosition() takes it.
+function dropDepth(kind) {
+  if (kind === 'loop') return 'top';
+  return kind === 'if' ? 'loop' : 'any';
+}
+
 function startPaletteDrag(event, editor, kind) {
   event.preventDefault();
   runDrag.editor = editor;
   const drop = position => {
     if (kind === 'loop') { editor.addLoop(position.index); return; }
     const step = editor.makeStep(kind);
-    const list = position.lane === 'loop' ? findLoop(editor.flow).steps : editor.flow.steps;
-    list.splice(position.index, 0, step);
+    laneList(editor.flow, position.lane).splice(position.index, 0, step);
     editor.select(step.id);
     editor.changed();
   };
   // A plain click appends the block, for people who prefer not to drag.
   drop.click = () => editor.addStep(kind);
-  runDrag(event, STEP_NAMES[kind], drop, null, null, kind !== 'loop');
+  runDrag(event, STEP_NAMES[kind], drop, null, null, dropDepth(kind));
 }
 
 function startNodeDrag(event, editor, step, node) {
@@ -395,7 +532,7 @@ function startNodeDrag(event, editor, step, node) {
     const source = listContaining(editor.flow, step.id);
     if (!source) return;
     const from = source.indexOf(step);
-    const target = position.lane === 'loop' ? findLoop(editor.flow).steps : editor.flow.steps;
+    const target = laneList(editor.flow, position.lane);
     let index = position.index;
     source.splice(from, 1);
     if (source === target && from < index) index -= 1;
@@ -404,12 +541,12 @@ function startNodeDrag(event, editor, step, node) {
     editor.changed();
   };
   drop.click = () => editor.select(step.id);
-  runDrag(event, STEP_NAMES[step.do], drop, () => node.classList.add('dragging'), () => node.classList.remove('dragging'), true);
+  runDrag(event, STEP_NAMES[step.do], drop, () => node.classList.add('dragging'), () => node.classList.remove('dragging'), dropDepth(step.do));
 }
 
 // Drawing a box over blocks selects them, ready to become the loop.
 function startLasso(event, editor) {
-  if (event.button !== 0 || event.target.closest('.node, button, .selection-bar, .loop-head')) return;
+  if (event.button !== 0 || event.target.closest('.node, button, .selection-bar, .loop-head, .if-head')) return;
   const startX = event.clientX;
   const startY = event.clientY;
   let box = null;
@@ -428,7 +565,7 @@ function startLasso(event, editor) {
     document.removeEventListener('pointermove', move);
     document.removeEventListener('pointerup', up);
     if (!box) {
-      if (!event.target.closest('.loop-frame')) editor.select(null);
+      if (!event.target.closest('.loop-frame, .if-frame')) editor.select(null);
       return;
     }
     box.remove();
@@ -436,9 +573,15 @@ function startLasso(event, editor) {
     const right = Math.max(startX, upEvent.clientX);
     const top = Math.min(startY, upEvent.clientY);
     const bottom = Math.max(startY, upEvent.clientY);
-    const chosen = Array.from(editor.canvasNode.querySelectorAll('.node')).filter(node => {
+    const hits = Array.from(editor.canvasNode.querySelectorAll('.node, .if-head')).filter(node => {
       const rect = node.getBoundingClientRect();
       return rect.left < right && rect.right > left && rect.top < bottom && rect.bottom > top;
+    });
+    // An "If" block taken whole brings its branches with it, so they are not chosen on their own.
+    const frames = new Set(hits.filter(node => node.classList.contains('if-head')).map(node => node.dataset.step));
+    const chosen = hits.filter(node => {
+      const frame = node.classList.contains('if-head') ? null : node.closest('.if-frame');
+      return !(frame && frames.has(frame.dataset.if));
     }).map(node => node.dataset.step);
     editor.selectMany(chosen);
   };

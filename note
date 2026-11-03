@@ -9,7 +9,7 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 | Hạng mục | Tình trạng |
 |---|---|
 | App, bộ cài exe và file zip 0.1.14 | Xong |
-| Test tự động của app | 298/298 đạt (`test_i18n` 19, `test_core` 94, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 37, `test_ui` 117), ngày 2026-11-03 |
+| Test tự động của app | 321/321 đạt (`test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 39, `test_ui` 128), ngày 2026-11-03 |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
 | Bộ cài có giao diện | **Chưa bấm thử bằng tay**, gồm các trang của trình cài và hộp hỏi xóa dữ liệu khi gỡ |
@@ -59,7 +59,14 @@ python tools/build_package.py
 
 ### Dựng quy trình
 - `+ New flow` mở hộp chọn: `Blank flow` hoặc 3 mẫu `Login + Excel rows`, `Read into Excel`, `Repeat clicks`. Bấm là tạo ngay. Ô tên có thể để trống. Khối phụ thuộc trang để trống và ghi rõ công dụng, ví dụ `Ô tài khoản`. Mẫu `Login + Excel rows` dùng khối `Login` với `Account` để trống và bí mật tên `your_password`, người dùng tự lưu trong `Secrets`.
-- 11 loại khối kéo thả, cộng khối `Loop`: `Open link`, `Login`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
+- 11 loại khối kéo thả, cộng khối `If` và khối `Loop`: `Open link`, `Login`, `Fill`, `Click`, `Select`, `Check`, `Read value`, `Wait for element`, `Wait`, `Verify`, `Manual step`.
+- `If` (tiếng Việt `Nếu`): khung viền cam nét đứt, có dòng điều kiện và hai nhánh `✓ Yes` / `✗ No`. Kéo khối vào từng nhánh, nhánh trống thì không làm gì. Điều kiện: phần tử có trên trang (chờ tối đa N giây, mặc định 3), chữ của phần tử bằng hoặc chứa một giá trị, URL chứa một chuỗi. Có ô `Turn it around` để đảo ngược. Câu trả lời không bao giờ làm hàng lỗi, chỉ chọn nhánh; log ghi nhánh đã chạy. Khối lỗi trong nhánh được báo đúng tên và tô đỏ như khối thường.
+  - Đặt được ở ngoài hoặc trong vùng lặp. Không đặt `Loop` hay `If` trong nhánh: kéo vào thì khối rơi ra sau khung, file sửa tay thì kiểm tra trước khi chạy báo lỗi.
+  - Trong file quy trình: `{"do": "if", "test": "exists|equals|contains|url_contains", "negate", "target", "value", "seconds", "then": [...], "else": [...]}`. `flow.walk()` và `flatten()` đi qua cả các nhánh.
+  - `Check on live page` cho khối trong nhánh chạy các khối trước khung `If` rồi các khối trước nó trong nhánh đó, không xét điều kiện. Khối `If` nằm phía trước thì được chạy thật, hỏi trang và đi đúng nhánh.
+  - Màn hình chạy: nhánh đã chạy có viền xanh, nhánh kia mờ đi.
+  - Kéo cả khung bằng dòng điều kiện. `Duplicate` chép cả nhánh với mã khối mới. `Delete block` xóa cả nhánh, `Undo` lấy lại được.
+- View và Zoom ở góc trên bên phải vùng sơ đồ: `⇄ Horizontal` / `⇅ Vertical` (dọc thì khối xếp từ trên xuống, mũi tên chỉ xuống, hai nhánh của `If` nằm cạnh nhau), `−` / `+` từ 50% đến 200% (bước 10%, hoặc Ctrl + lăn chuột trên sơ đồ), `⟲ Reset` về 100% và cuộn về đầu. Kéo thả và khoanh chọn vẫn đúng khi zoom. Trình duyệt nhớ lựa chọn (`canvas.view`, `canvas.zoom`), dùng chung cho mọi quy trình. Màn hình chạy theo view đã chọn.
 - `Login`: bắt buộc điền `Account` và `Password`. `Account` chỉ gõ trực tiếp, lấy từ Excel hoặc Biến, không được là bí mật vì nó hiện trên trang. `Password` gõ tay (mặc định ẩn) hoặc chọn từ `Secrets`. Mật khẩu gõ tay tự lưu vào Credential Manager với tên `password_<mã quy trình>_<mã khối>`, không nằm trong file quy trình và không vào lịch sử `Undo`. Khối tự tìm ô tài khoản, ô mật khẩu và nút gửi, và báo lỗi nếu sau khi gửi form vẫn còn. Trang không có form thì coi như đã đăng nhập sẵn và ghi cảnh báo vào log. Chưa hỗ trợ form trong iframe và kiểu đăng nhập hai bước (nhập tài khoản rồi sang trang khác mới nhập mật khẩu), các trường hợp đó dùng khối `Fill` và `Click`.
 - `Wait`: tạm ngưng theo số giây, mặc định 3, nhận số lẻ. Lúc chạy, khối và dòng trạng thái đếm ngược. Bấm `Stop after this row` trong lúc chờ thì vẫn chờ hết và làm xong hàng đó. `Stop` trong `Check on live page` thì dừng ngay.
 - Rê chuột hoặc chuyển focus vào một khối, `Record` hay `Clear all` ở cột trái thì hiện popup giải thích. Bấm hoặc rời chuột là popup tắt.
@@ -230,6 +237,7 @@ python tools/build_package.py
 - Thêm nút `Keep browser` giữ Chrome mở sau lượt chạy (Visible và Offscreen), có chấm báo trạng thái trình duyệt.
 - Chế độ `Visible` mở Chrome phóng to hết màn hình (`--start-maximized`, và `show()` đặt `maximized` thay vì `normal`).
 - Cột khối bên trái rộng thêm 35%, kéo giãn được. Code kéo giãn của hai cột dùng chung `panelResizer` trong `builder.js`.
+- Thêm khối `If` với hai nhánh Yes/No, nút View ngang/dọc và Zoom cho sơ đồ.
 
 ## File chính
 

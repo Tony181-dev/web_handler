@@ -27,12 +27,17 @@ STEP_NAMES = {
     "wait": "Wait",
     "verify": "Verify",
     "loop": "Loop",
+    "if": "If",
     "manual_pause": "Manual step",
 }
 TARGET_STEPS = {"fill", "click", "select", "check", "read", "ocr", "wait_for"}
 READING_STEPS = ("read", "ocr")
 TEMPLATE_FIELDS = ("url", "account", "password", "value", "equals", "contains", "url_contains", "url_not_contains")
 WHOLE_SECRET = re.compile(r"^\{\{\s*secret:[^{}]+\}\}$")
+# What an "If" block can ask about the page. Only "exists" needs no value.
+IF_TESTS = ("exists", "equals", "contains", "url_contains")
+IF_TESTS_WITH_ELEMENT = ("exists", "equals", "contains")
+IF_WAIT_SECONDS = 3
 
 
 def new_flow(name):
@@ -83,13 +88,33 @@ def find_loop(flow):
     return None
 
 
+def branches(step):
+    """The lists of blocks a block holds: a loop has one, an "If" block has its Yes and No branches."""
+    if step.get("do") == "loop":
+        return [step.get("steps") or []]
+    if step.get("do") == "if":
+        return [step.get("then") or [], step.get("else") or []]
+    return []
+
+
+def flatten(steps):
+    """Every block in these lists and the blocks they hold, in running order."""
+    for step in steps:
+        yield step
+        for branch in branches(step):
+            yield from flatten(branch)
+
+
 def walk(flow):
-    """Yield (step, in_loop) in running order. Loop steps themselves are included."""
-    for step in flow.get("steps", []):
-        yield step, False
-        if step.get("do") == "loop":
-            for child in step.get("steps", []):
-                yield child, True
+    """Yield (step, in_loop) in running order. Loop and "If" blocks themselves are included."""
+
+    def visit(steps, in_loop):
+        for step in steps:
+            yield step, in_loop
+            for branch in branches(step):
+                yield from visit(branch, in_loop or step.get("do") == "loop")
+
+    yield from visit(flow.get("steps", []), False)
 
 
 def stop_column(flow):
@@ -97,7 +122,7 @@ def stop_column(flow):
     loop = find_loop(flow)
     if not loop:
         return None
-    for step in loop.get("steps", []):
+    for step in flatten(loop.get("steps", [])):
         for field in TEMPLATE_FIELDS:
             for kind, name in _safe_references(step.get(field)):
                 if kind == "column":
@@ -118,6 +143,8 @@ def step_label(step):
     name = t(STEP_NAMES.get(step.get("do"), step.get("do")))
     if step.get("do") == "wait":
         return t("{name} {seconds} s", name=name, seconds=step.get("seconds"))
+    if step.get("do") == "if" and step.get("test") == "url_contains":
+        return t("{name} the URL contains {value}", name=name, value=step.get("value") or "")
     target = step.get("target") or {}
     detail = target.get("primary") or step.get("url") or step.get("message") or ""
     return f"{name} {detail}".strip()
@@ -180,6 +207,23 @@ def _check_step_fields(step, issues):
         seconds = step.get("seconds")
         if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds <= 0:
             issues.error(t('The "{name}" block needs a number of seconds above 0.', name=name), step)
+    if kind == "if":
+        test = step.get("test")
+        seconds = step.get("seconds")
+        if test not in IF_TESTS:
+            issues.error(t('The "{name}" block has no condition.', name=name), step)
+        elif test in IF_TESTS_WITH_ELEMENT and not ((step.get("target") or {}).get("primary") or "").strip():
+            issues.error(t('The "{name}" block has no element.', name=name), step)
+        elif test != "exists" and step.get("value") in (None, ""):
+            issues.error(t('The "{name}" block has no value.', name=name), step)
+        if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds <= 0):
+            issues.error(t('The "{name}" block needs a number of seconds above 0.', name=name), step)
+        if not step.get("then") and not step.get("else"):
+            issues.error(t('The "{name}" block has no blocks in either branch yet.', name=name), step)
+        for child in flatten((step.get("then") or []) + (step.get("else") or [])):
+            if child.get("do") in ("loop", "if"):
+                issues.error(t('A "{inner}" block cannot be placed inside an "{name}" block.', inner=t(STEP_NAMES[child["do"]]), name=name), step)
+                break
     if kind == "verify":
         checks_url = step.get("url_contains") or step.get("url_not_contains")
         checks_element = step.get("equals") not in (None, "") or step.get("contains") not in (None, "")

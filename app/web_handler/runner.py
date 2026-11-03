@@ -6,7 +6,7 @@ import time
 
 from . import flow as flow_module
 from . import i18n, templating
-from .browser_errors import BrowserClosed
+from .browser_errors import BrowserClosed, ElementError
 from .i18n import t
 
 STATUS_OK = "OK"
@@ -127,6 +127,10 @@ class Runner:
         self.pause_after = settings.get("pause_after_consecutive_failures", 3)
         self.counts = {STATUS_OK: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 0, STATUS_UNKNOWN: 0}
         self.written = {}
+        # Where the run is, so blocks inside an "If" block report like the ones around it.
+        self.stage = None
+        self.row_key = None
+        self.current = None
 
     # Running one step
 
@@ -166,6 +170,8 @@ class Runner:
             self.hold(step, step["seconds"])
         elif kind == "verify":
             self.verify(step, render)
+        elif kind == "if":
+            self.run_if(step, render)
         elif kind == "manual_pause":
             self.wait_for_user(step.get("message") or t("Do this by hand, then click Continue."))
         else:
@@ -210,7 +216,44 @@ class Runner:
             if expected not in actual:
                 raise StepError(t("'{actual}' does not contain '{expected}'.", expected=expected, actual=actual))
 
+    def condition_holds(self, step, render):
+        """Asks the page, and never fails the row: a missing element is only an answer."""
+        test = step.get("test")
+        seconds = step.get("seconds") or flow_module.IF_WAIT_SECONDS
+        if test == "exists":
+            holds = self.driver.appears(step["target"], seconds)
+        elif test in ("equals", "contains"):
+            expected = render("value")
+            try:
+                actual = self.driver.read(step["target"], seconds)
+            except ElementError:
+                actual = None
+            holds = actual is not None and (actual == expected if test == "equals" else expected in actual)
+        elif test == "url_contains":
+            holds = render("value") in self.driver.url()
+        else:
+            raise StepError(t('The "{name}" block has no condition.', name=t(flow_module.STEP_NAMES["if"])))
+        return holds != bool(step.get("negate"))
+
+    def run_if(self, step, render):
+        holds = self.condition_holds(step, render)
+        branch = "then" if holds else "else"
+        event = {"type": "branch", "step": step.get("id"), "branch": branch}
+        if self.row_key is not None:
+            event["row"] = self.row_key
+        self.emit(event)
+        for child in step.get(branch) or []:
+            self.announce(child)
+            self.run_step(child)
+
     # Helpers
+
+    def announce(self, step):
+        self.current = step
+        event = {"type": "step", "stage": self.stage, "step": step.get("id"), "label": flow_module.step_label(step)}
+        if self.row_key is not None:
+            event["row"] = self.row_key
+        self.emit(event)
 
     def emit_log(self, level, text):
         self.emit({"type": "log", "level": level, "text": self.context.mask(text)})
@@ -234,10 +277,12 @@ class Runner:
             return None
 
     def run_plain_steps(self, steps, stage):
+        self.stage = stage
+        self.row_key = None
         for step in steps:
             if self.control.stop_requested:
                 raise RunStopped()
-            self.emit({"type": "step", "stage": stage, "step": step.get("id"), "label": flow_module.step_label(step)})
+            self.announce(step)
             self.run_step(step)
 
     # Running the rows
@@ -287,14 +332,13 @@ class Runner:
         if self.journal:
             self.journal.write(type="row_start", row=key)
         self.emit({"type": "row_start", "row": key, "index": index})
-        current = None
+        self.stage = "loop"
+        self.row_key = key
+        self.current = None
         try:
-            for current in loop.get("steps", []):
-                self.emit({
-                    "type": "step", "stage": "loop", "row": key, "step": current.get("id"),
-                    "label": flow_module.step_label(current),
-                })
-                self.run_step(current)
+            for step in loop.get("steps", []):
+                self.announce(step)
+                self.run_step(step)
         except BrowserClosed:
             self.finish_row(key, row, STATUS_UNKNOWN, t("The browser was closed partway through."))
             raise
@@ -302,6 +346,8 @@ class Runner:
             self.finish_row(key, row, STATUS_UNKNOWN, t("Stopped during a wait."))
             raise
         except Exception as error:
+            # The block inside an "If" block that failed, not the "If" block holding it.
+            current = self.current
             label = flow_module.step_label(current) if current else ""
             message = f"{label}: {self.describe(error)}"
             shot = self.screenshot(f"row_{key}")

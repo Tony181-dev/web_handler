@@ -301,9 +301,11 @@ def step_signature(step, row):
 
 
 def needs_excel_row(step):
-    for field in flow_module.TEMPLATE_FIELDS:
-        if any(kind in ("column", "row") for kind, _ in templating.references(step.get(field))):
-            return True
+    """Also through the blocks an "If" block holds, which run with it."""
+    for inner in flow_module.flatten([step]):
+        for field in flow_module.TEMPLATE_FIELDS:
+            if any(kind in ("column", "row") for kind, _ in templating.references(inner.get(field))):
+                return True
     return False
 
 
@@ -327,7 +329,7 @@ def run_up_to(driver, commands, command, progress):
     by_id = {step["id"]: step for step, _ in flow_module.walk(flow)}
     steps = [by_id[step_id] for step_id in command.get("step_ids") or []]
     loop = flow_module.find_loop(flow)
-    in_loop = {step["id"] for step in loop["steps"]} if loop else set()
+    in_loop = {step["id"] for step, inside in flow_module.walk(flow) if inside}
     row = None
     if loop and loop.get("source") == "excel" and any(step["id"] in in_loop and needs_excel_row(step) for step in steps):
         row = first_usable_row(flow, command.get("excel_path"))

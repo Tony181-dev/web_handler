@@ -86,6 +86,10 @@ def describe_event(event):
         return "info", t("Opened the browser.")
     if kind == "step":
         return "info", prefix + event.get("label", "")
+    if kind == "branch":
+        if event.get("branch") == "then":
+            return "info", prefix + t('The condition of the "If" block is met, so the Yes branch runs.')
+        return "info", prefix + t('The condition of the "If" block is not met, so the No branch runs.')
     if kind == "row_done":
         message = f": {event['message']}" if event.get("message") else ""
         level = "error" if event.get("status") == runner.STATUS_FAILED else "info"
@@ -359,7 +363,7 @@ class JobManager:
         kind = event.get("type")
         if kind in ("closed", "finished"):
             self._finish_inspection(event.get("message"))
-        elif kind in ("step", "paused", "resumed", "log", "result"):
+        elif kind in ("step", "branch", "paused", "resumed", "log", "result"):
             line = describe_result(event) if kind == "result" else describe_event(event)
             if line:
                 self.log.add(*line)

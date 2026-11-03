@@ -78,7 +78,7 @@ async function renderRun(runId) {
   const state = {
     total: 0, rows: new Map(), counts: { OK: 0, Failed: 0, Skipped: 0, Unclear: 0 },
     finished: null, paused: null, current: '', logs: [], summary: null,
-    lit: new Set(), activeStep: null, failedStep: null, flash: null, wait: null,
+    lit: new Set(), activeStep: null, failedStep: null, flash: null, wait: null, branches: new Map(),
   };
   const page = el('div.page', { id: 'run-page' });
   view.replaceChildren(el('div.page-scroll', null, page));
@@ -91,7 +91,9 @@ async function renderRun(runId) {
   const browserMode = await api('GET', '/api/browser-mode').then(data => data.mode).catch(() => 'visible');
   const flow = await api('GET', '/api/flows/' + summary.flow_id).then(data => data.flow).catch(() => null);
   const loop = flow && findLoop(flow);
-  const loopSteps = loop ? loop.steps.map(step => step.id) : [];
+  const loopSteps = loop ? flattenSteps(loop.steps).map(step => step.id) : [];
+  // The diagram follows the view chosen in the editor.
+  const vertical = memory.get('canvas.view') === 'vertical';
 
   const stepState = id => {
     if (state.failedStep === id || (state.flash && state.flash.id === id && Date.now() < state.flash.until)) return 'failed';
@@ -140,7 +142,7 @@ async function renderRun(runId) {
         el('div.progress', null, el('div', { style: `width:${percent}%` })),
         el('div.muted', { id: 'run-current', text: finished ? t('{done}/{total} done', { done, total: state.total || done }) : (state.current || t('Opening the browser...')) }),
         finished ? finishedActions(runId, summary, state, finished) : null),
-      flow ? el('div.card.card-pad', { id: 'run-flow', style: 'margin-bottom:14px' }, renderRunDiagram(flow, stepState)) : null,
+      flow ? el('div.card.card-pad', { id: 'run-flow', style: 'margin-bottom:14px' }, renderRunDiagram(flow, stepState, id => state.branches.get(id), vertical)) : null,
       rows.length ? el('div.card', { style: 'margin-bottom:14px;overflow:auto' }, el('table.data', { id: 'run-rows' },
         el('tr', null, el('th', { text: summary.excel_path ? t('Row') : t('Time') }), el('th', { text: t('Status') }), el('th', { text: t('Details') })),
         rows.map(row => el('tr', { 'data-row': row.row },
@@ -156,7 +158,10 @@ async function renderRun(runId) {
   };
 
   const resetLoopBlocks = () => {
-    loopSteps.forEach(id => state.lit.delete(id));
+    loopSteps.forEach(id => {
+      state.lit.delete(id);
+      state.branches.delete(id);
+    });
     state.activeStep = null;
   };
 
@@ -186,6 +191,7 @@ async function renderRun(runId) {
         if (event.status === 'Failed') state.failedStep = state.activeStep;
         else if (event.status === 'OK') resetLoopBlocks();
         break;
+      case 'branch': state.branches.set(event.step, event.branch); break;
       case 'paused': state.paused = event.reason; break;
       case 'resumed': state.paused = null; break;
       case 'log': state.logs.push({ level: event.level, text: event.text }); break;

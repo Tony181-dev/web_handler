@@ -1436,6 +1436,190 @@ class BrowserModeButtonTests(AppTestCase):
         self.page.click("[data-action=cancel]")
 
 
+class IfBlockUiTests(AppTestCase):
+    def if_step(self):
+        return self.page.evaluate("window.currentEditor.flow.steps.find(step => step.do === 'if')")
+
+    def add_if(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=goto]").click()
+        self.drag_tool("if")
+        expect(self.page.locator("#canvas .if-frame")).to_have_count(1)
+
+    def test_blocks_go_into_either_branch_and_a_loop_does_not(self):
+        self.add_if()
+        expect(self.page.locator("[data-field=if-test]")).to_have_value("exists")
+        self.drag_tool("click", ".branch[data-branch=then]")
+        self.drag_tool("fill", ".branch[data-branch=else]")
+        expect(self.page.locator(".branch[data-branch=then] .node")).to_have_count(1)
+        expect(self.page.locator(".branch[data-branch=else] .node")).to_have_count(1)
+        self.drag_tool("loop", ".branch[data-branch=then]")
+        self.drag_tool("if", ".branch[data-branch=else]")
+        self.shot("if_block")
+        flow = self.saved_flow()
+        # Dropped over the frame, a block that cannot go in a branch lands right after the frame.
+        self.assertEqual([step["do"] for step in flow["steps"]], ["goto", "if", "if", "loop"])
+        branch = flow["steps"][1]
+        self.assertEqual([step["do"] for step in branch["then"]], ["click"])
+        self.assertEqual([step["do"] for step in branch["else"]], ["fill"])
+
+    def test_a_block_moves_from_a_branch_to_the_main_lane_and_back(self):
+        self.add_if()
+        self.drag_tool("click", ".branch[data-branch=then]")
+        node = self.page.locator(".branch[data-branch=then] .node").bounding_box()
+        canvas = self.page.locator("#canvas").bounding_box()
+        self.page.mouse.move(node["x"] + 20, node["y"] + 10)
+        self.page.mouse.down()
+        self.page.mouse.move(canvas["x"] + canvas["width"] - 30, canvas["y"] + canvas["height"] - 30, steps=8)
+        self.page.mouse.up()
+        expect(self.page.locator(".branch .node")).to_have_count(0)
+        self.assertEqual([step["do"] for step in self.saved_flow()["steps"]], ["goto", "if", "click"])
+
+    def test_the_condition_panel_follows_the_chosen_test(self):
+        self.add_if()
+        expect(self.page.locator("#target-selector")).to_be_visible()
+        expect(self.page.locator("#if-seconds")).to_be_visible()
+        expect(self.page.locator("[data-field=value]")).to_have_count(0)
+        self.page.fill("#target-selector", "#password")
+        expect(self.page.locator(".if-head")).to_contain_text("#password is on the page")
+        self.page.locator("#if-negate").check()
+        expect(self.page.locator(".if-head")).to_contain_text("#password is not on the page")
+        self.page.select_option("[data-field=if-test]", "url_contains")
+        expect(self.page.locator("#target-selector")).to_have_count(0)
+        self.page.locator("[data-field=value]").fill("/login")
+        expect(self.page.locator(".if-head")).to_contain_text("URL without /login")
+        expect(self.page.locator("#if-seconds")).to_have_count(0)
+        step = self.if_step()
+        self.assertEqual((step["test"], step["value"], step["negate"]), ("url_contains", "/login", True))
+        expect(self.page.locator("#delay-details")).to_have_count(0)
+
+    def test_duplicate_copies_the_branches_with_new_ids_and_undo_removes_them(self):
+        self.add_if()
+        self.drag_tool("click", ".branch[data-branch=then]")
+        self.page.locator(".if-head").click()
+        self.page.click("#duplicate-selection")
+        expect(self.page.locator("#canvas .if-frame")).to_have_count(2)
+        ids = self.page.evaluate("flattenSteps(window.currentEditor.flow.steps).map(step => step.id)")
+        self.assertEqual(len(ids), len(set(ids)), ids)
+        self.page.click("#undo")
+        expect(self.page.locator("#canvas .if-frame")).to_have_count(1)
+
+    def test_deleting_the_if_block_removes_its_branches(self):
+        self.add_if()
+        self.drag_tool("click", ".branch[data-branch=then]")
+        self.page.locator(".if-head").click()
+        self.page.click("#delete-step")
+        expect(self.page.locator("#canvas .if-frame")).to_have_count(0)
+        self.assertEqual([step["do"] for step in self.saved_flow()["steps"]], ["goto"])
+
+    def test_the_run_shows_which_branch_was_taken(self):
+        self.new_flow()
+        login = f"http://127.0.0.1:{self.port}/demo/login"
+        self.page.evaluate("""login => {
+            const editor = window.currentEditor;
+            editor.flow.steps = [
+                { id: 's1', do: 'goto', url: login },
+                { id: 's2', do: 'if', test: 'url_contains', value: '/demo/login', negate: false,
+                  then: [{ id: 's3', do: 'wait', seconds: 0.2 }], else: [{ id: 's4', do: 'wait', seconds: 0.2 }] },
+            ];
+            editor.changed();
+        }""", login)
+        self.saved_flow()
+        self.page.click("#run-full")
+        self.page.click("[data-action=confirm-run]")
+        expect(self.page.locator("#run-headline")).to_have_text("Finished.", timeout=60000)
+        expect(self.page.locator("#run-flow .branch[data-branch=then]")).to_have_class(re.compile("taken"))
+        expect(self.page.locator("#run-flow .branch[data-branch=else]")).to_have_class(re.compile("skipped"))
+        self.shot("if_run")
+
+    def test_names_are_translated(self):
+        self.add_if()
+        self.page.select_option("#language", "vi")
+        expect(self.page.locator("html")).to_have_attribute("lang", "vi")
+        expect(self.page.locator(".tool[data-kind=if]")).to_have_text("Nếu")
+        expect(self.page.locator(".branch[data-branch=then] .branch-label")).to_have_text("✓ Đúng")
+        expect(self.page.locator("#view-toggle")).to_have_text("⇄ Ngang")
+        self.page.select_option("#language", "en")
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+
+
+class CanvasViewTests(AppTestCase):
+    def build(self):
+        self.new_flow()
+        for kind in ("goto", "fill", "click"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+        expect(self.page.locator("#canvas .node")).to_have_count(3)
+
+    def boxes(self):
+        return [node.bounding_box() for node in self.page.locator("#canvas .node").all()]
+
+    def test_vertical_view_stacks_the_blocks_and_is_remembered(self):
+        self.build()
+        first, second, _ = self.boxes()
+        self.assertAlmostEqual(first["y"], second["y"], delta=2)
+        self.assertLess(first["x"], second["x"])
+        self.page.click("#view-toggle")
+        expect(self.page.locator("#view-toggle")).to_have_text("⇅ Vertical")
+        first, second, third = self.boxes()
+        self.assertAlmostEqual(first["x"], second["x"], delta=2)
+        self.assertLess(first["y"] + first["height"], second["y"])
+        self.assertLess(second["y"], third["y"])
+        self.shot("vertical_view")
+        self.page.reload()
+        expect(self.page.locator("#canvas")).to_have_class(re.compile("vertical"))
+        self.page.click("#view-toggle")
+        expect(self.page.locator("#canvas")).not_to_have_class(re.compile("vertical"))
+
+    def test_dragging_reorders_in_the_vertical_view(self):
+        self.build()
+        self.page.click("#view-toggle")
+        first, _, third = self.boxes()
+        self.page.mouse.move(third["x"] + 20, third["y"] + 10)
+        self.page.mouse.down()
+        self.page.mouse.move(first["x"] + 20, first["y"] + 4, steps=8)
+        self.page.mouse.up()
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds, ["click", "goto", "fill"])
+
+    def test_zoom_in_out_and_reset(self):
+        self.build()
+        width = self.boxes()[0]["width"]
+        expect(self.page.locator("#zoom-level")).to_have_text("100%")
+        self.page.click("#zoom-in")
+        self.page.click("#zoom-in")
+        expect(self.page.locator("#zoom-level")).to_have_text("120%")
+        self.assertAlmostEqual(self.boxes()[0]["width"], width * 1.2, delta=2)
+        for _ in range(7):
+            self.page.click("#zoom-out")
+        expect(self.page.locator("#zoom-level")).to_have_text("50%")
+        expect(self.page.locator("#zoom-out")).to_be_disabled()
+        self.page.reload()
+        expect(self.page.locator("#zoom-level")).to_have_text("50%")
+        self.page.click("#zoom-reset")
+        expect(self.page.locator("#zoom-level")).to_have_text("100%")
+        self.assertAlmostEqual(self.boxes()[0]["width"], width, delta=1)
+
+    def test_ctrl_wheel_zooms_and_dragging_still_lands_right_when_zoomed(self):
+        self.build()
+        box = self.page.locator("#canvas").bounding_box()
+        self.page.mouse.move(box["x"] + 300, box["y"] + 300)
+        self.page.keyboard.down("Control")
+        self.page.mouse.wheel(0, -100)
+        self.page.keyboard.up("Control")
+        expect(self.page.locator("#zoom-level")).to_have_text("110%")
+        for _ in range(4):
+            self.page.click("#zoom-in")
+        expect(self.page.locator("#zoom-level")).to_have_text("150%")
+        first, _, third = self.boxes()
+        self.page.mouse.move(third["x"] + 20, third["y"] + 10)
+        self.page.mouse.down()
+        self.page.mouse.move(first["x"] + 5, first["y"] + first["height"] / 2, steps=8)
+        self.page.mouse.up()
+        kinds = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.do)")
+        self.assertEqual(kinds, ["click", "goto", "fill"])
+        self.page.click("#zoom-reset")
+
+
 class OcrBlockUiTests(AppTestCase):
     def test_block_points_at_an_image_and_saves_to_a_variable(self):
         self.new_flow()

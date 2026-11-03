@@ -9,6 +9,10 @@ const PALETTE_MIN_WIDTH = 128;
 const PALETTE_DEFAULT_WIDTH = Math.round(PALETTE_MIN_WIDTH * 1.35);
 const PALETTE_MAX_WIDTH = Math.round(PALETTE_DEFAULT_WIDTH * 1.3);
 const PANEL_KEY_STEP = 16;
+// How far the diagram can be zoomed, and by how much each step goes.
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.1;
 const HISTORY_LIMIT = 200;
 const PASSWORD_SAVE_DELAY_MS = 300;
 // The labels stay in English in every language, as the names of these modes.
@@ -38,6 +42,9 @@ class FlowEditor {
     this.save = debounce(() => this.persist(), 500);
     this.onKey = event => this.handleKey(event);
     this.browserMode = 'visible';
+    // How the diagram is shown is a per-browser convenience, the same for every flow.
+    this.view = memory.get('canvas.view') === 'vertical' ? 'vertical' : 'horizontal';
+    this.zoom = clampZoom(parseFloat(memory.get('canvas.zoom')) || 1);
     this.resetHistory();
   }
 
@@ -173,6 +180,9 @@ class FlowEditor {
     if (kind === 'goto') step.url = '';
     if (kind === 'login') { step.account = ''; step.password = ''; }
     if (kind === 'verify') { step.target = { primary: '', fallbacks: [], frames: [], verified: false }; step.equals = ''; }
+    if (kind === 'if') {
+      Object.assign(step, { test: 'exists', negate: false, target: { primary: '', fallbacks: [], frames: [], verified: false }, value: '', then: [], else: [] });
+    }
     if (kind === 'manual_pause') step.message = '';
     if (kind === 'wait') step.seconds = DEFAULT_WAIT_SECONDS;
     if (kind === 'read' || kind === 'ocr') step.save_to_var = '';
@@ -211,17 +221,21 @@ class FlowEditor {
   }
 
   duplicateSelection() {
-    const loop = findLoop(this.flow);
+    // Every list a block can sit in. A list inside a chosen "If" block is copied with it.
+    const lists = [this.flow.steps, ...flattenSteps(this.flow.steps)
+      .filter(step => !this.selection.has(step.id))
+      .flatMap(branchesOf)];
     const copies = [];
-    for (const list of [this.flow.steps, loop ? loop.steps : []]) {
+    for (const list of lists) {
       const chosen = list.filter(step => this.selection.has(step.id) && step.do !== 'loop');
       if (!chosen.length) continue;
       let position = list.indexOf(chosen[chosen.length - 1]) + 1;
       for (const step of chosen) {
         const copy = JSON.parse(JSON.stringify(step));
-        copy.id = nextStepId(this.flow);
         list.splice(position, 0, copy);
         position += 1;
+        // Numbered once in the flow, so each id taken is seen by the next.
+        for (const inner of flattenSteps([copy])) inner.id = nextStepId(this.flow);
         copies.push(copy.id);
       }
     }
@@ -247,7 +261,7 @@ class FlowEditor {
   }
 
   blockCount() {
-    return this.flow.steps.reduce((total, step) => total + (step.steps ? step.steps.length : 1), 0);
+    return flattenSteps(this.flow.steps).filter(step => step.do !== 'loop').length;
   }
 
   async clearAll() {
@@ -302,11 +316,9 @@ class FlowEditor {
 
   variableNames() {
     const names = [];
-    const visit = steps => steps.forEach(step => {
+    flattenSteps(this.flow.steps).forEach(step => {
       if (step.save_to_var) names.push(step.save_to_var);
-      if (step.steps) visit(step.steps);
     });
-    visit(this.flow.steps);
     return [...new Set(names)];
   }
 
@@ -430,6 +442,43 @@ class FlowEditor {
     } catch (error) { showError(error); }
   }
 
+  // How the diagram is shown
+
+  toggleView() {
+    this.view = this.view === 'vertical' ? 'horizontal' : 'vertical';
+    memory.set('canvas.view', this.view);
+    renderCanvas(this);
+    this.renderCanvasTools();
+  }
+
+  setZoom(wanted) {
+    this.zoom = clampZoom(wanted);
+    memory.set('canvas.zoom', String(this.zoom));
+    // Only the size changes, so the blocks are not drawn again.
+    const content = document.getElementById('canvas-content');
+    if (content) content.style.zoom = String(this.zoom);
+    this.renderCanvasTools();
+  }
+
+  resetZoom() {
+    this.setZoom(1);
+    this.canvasNode.scrollTo(0, 0);
+  }
+
+  renderCanvasTools() {
+    const vertical = this.view === 'vertical';
+    this.canvasToolsNode.replaceChildren(
+      el('button.btn.small', {
+        id: 'view-toggle', text: vertical ? t('⇅ Vertical') : t('⇄ Horizontal'),
+        title: vertical ? t('Show the blocks from left to right') : t('Show the blocks from top to bottom'),
+        'aria-pressed': String(vertical), onclick: () => this.toggleView(),
+      }),
+      el('button.btn.small', { id: 'zoom-out', text: '−', title: t('Zoom out (Ctrl + mouse wheel)'), 'aria-label': t('Zoom out'), disabled: this.zoom <= ZOOM_MIN, onclick: () => this.setZoom(this.zoom - ZOOM_STEP) }),
+      el('span.zoom-level', { id: 'zoom-level', text: `${Math.round(this.zoom * 100)}%` }),
+      el('button.btn.small', { id: 'zoom-in', text: '+', title: t('Zoom in (Ctrl + mouse wheel)'), 'aria-label': t('Zoom in'), disabled: this.zoom >= ZOOM_MAX, onclick: () => this.setZoom(this.zoom + ZOOM_STEP) }),
+      el('button.btn.small', { id: 'zoom-reset', text: t('⟲ Reset'), title: t('Back to 100% and to the start of the diagram'), onclick: () => this.resetZoom() }));
+  }
+
   showRowCount() {
     if (!this.rowCountNode) return;
     const settings = this.flow.excel || {};
@@ -459,6 +508,10 @@ class FlowEditor {
     const path = await promptBox(t('Excel file path'), t('Paste the full path'), this.excelPath, t('The file dialog was closed or could not open. You can paste the path here.'));
     if (path) await this.loadExcel(path.replace(/^"|"$/g, ''));
   }
+}
+
+function clampZoom(value) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 10) / 10));
 }
 
 // A column beside the canvas that can be dragged wider or narrower. The width is a per-browser convenience.
@@ -533,6 +586,13 @@ async function renderBuilder(id) {
 
   editor.canvasNode = el('div.canvas', { id: 'canvas' });
   editor.canvasNode.addEventListener('pointerdown', event => startLasso(event, editor));
+  editor.canvasNode.addEventListener('wheel', event => {
+    if (!event.ctrlKey) return;
+    // Ctrl + wheel zooms the diagram, not the whole app.
+    event.preventDefault();
+    editor.setZoom(editor.zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+  }, { passive: false });
+  editor.canvasToolsNode = el('div.canvas-tools', { id: 'canvas-tools' });
   editor.inspectorNode = el('aside.inspector', { id: 'inspector' });
   editor.runbarNode = el('div.runbar', { id: 'runbar' });
   editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: t('Clear all'), style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
@@ -558,7 +618,7 @@ async function renderBuilder(id) {
     editor.clearNode);
 
   const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
-  builder.append(paletteResizer(builder), inspectorResizer(builder), el('div.canvas-log', null, logButton()));
+  builder.append(paletteResizer(builder), inspectorResizer(builder), editor.canvasToolsNode, el('div.canvas-log', null, logButton()));
   view.replaceChildren(builder);
 
   document.addEventListener('keydown', editor.onKey);
@@ -574,6 +634,7 @@ async function renderBuilder(id) {
 
   await editor.loadSecrets();
   editor.browserMode = await api('GET', '/api/browser-mode').then(data => data.mode).catch(() => 'visible');
+  editor.renderCanvasTools();
   editor.render();
   if (editor.excelPath) await editor.loadExcel(editor.excelPath);
   // Filling in what the open Excel file shows is not something to undo.

@@ -198,6 +198,30 @@ class InspectorTests(IntegrationBase):
         self.assertEqual(ran, ["s1", "s2", "s3", "s4", "s5"])
         self.assertEqual(SITE.login_attempts, 2)
 
+    def test_an_if_block_on_the_way_runs_the_branch_the_page_answers(self):
+        target = self.target
+        login = [
+            {"id": "s3", "do": "fill", "target": target("#user"), "value": "{{secret:demo_user}}"},
+            {"id": "s4", "do": "fill", "target": target("#password"), "value": "{{secret:demo_password}}"},
+            {"id": "s5", "do": "click", "target": target("input.login_button"), "wait_navigation": True},
+        ]
+        flow = {
+            "version": 1, "name": "If", "settings": {"step_timeout_seconds": 3, "navigation_timeout_seconds": 5}, "excel": None,
+            "steps": [
+                {"id": "s1", "do": "goto", "url": f"{self.base}/demo/"},
+                {"id": "s2", "do": "if", "test": "exists", "target": target("#password"), "seconds": 1, "then": login, "else": []},
+            ],
+        }
+        reply, ran = self.ask(flow, ["s1", "s2"], "#items a.item-link >> nth=0")
+        self.assertEqual(reply["count"], 1, reply)
+        self.assertEqual(ran, ["s1", "s2", "s3", "s4", "s5"])
+        self.assertIn({"type": "branch", "step": "s2", "branch": "then"}, self.events)
+        # Checking a block inside the branch runs only what comes before it there.
+        flow["steps"][0]["url"] = f"{self.base}/demo/logout"
+        reply, ran = self.ask(flow, ["s1", "s3"], "#password", "fill")
+        self.assertEqual((reply["count"], reply["problem"]), (1, None), reply)
+        self.assertEqual(ran, ["s1", "s3"])
+
     def test_action_is_only_tried_not_carried_out(self):
         flow = self.flow_with_login()
         reply, _ = self.ask(flow, ["s1", "s2", "s3", "s4", "s5"], "#open-popup")
@@ -424,6 +448,33 @@ class KeepBrowserTests(IntegrationBase):
         settings.save_keep_browser(False)
         events, _ = self.run_job(self.flow(), timeout=60)
         self.assertFalse(events[-1]["kept_open"])
+
+
+class IfBlockTests(IntegrationBase):
+    """The case it was made for: log in only when the site still asks for it."""
+
+    def flow(self):
+        password = {"primary": "input[type=password]", "fallbacks": [], "frames": [], "verified": True}
+        login = {"do": "login", "account": demo_site.DEMO_USER, "password": "{{secret:demo_password}}"}
+        return {
+            "name": "t", "settings": {"step_timeout_seconds": 3, "navigation_timeout_seconds": 20},
+            "steps": [
+                {"id": "a", "do": "loop", "source": "count", "count": 2, "steps": [
+                    {"id": "b", "do": "goto", "url": f"{self.base}/demo/"},
+                    {"id": "c", "do": "if", "test": "exists", "target": password, "seconds": 1,
+                     "then": [{"id": "d", **login}], "else": []},
+                    {"id": "e", "do": "verify", "url_contains": "/demo/items"},
+                ]},
+            ],
+        }
+
+    def test_logs_in_the_first_time_and_skips_it_once_logged_in(self):
+        events, _ = self.run_job(self.flow())
+        self.assertEqual(events[-1]["outcome"], "finished", events[-5:])
+        self.assertEqual(self.statuses(events), {1: "OK", 2: "OK"})
+        branches = [(event["row"], event["branch"]) for event in events if event["type"] == "branch"]
+        self.assertEqual(branches, [(1, "then"), (2, "else")])
+        self.assertEqual(SITE.login_attempts, 1)
 
 
 class OcrBlockTests(IntegrationBase):

@@ -160,7 +160,7 @@ function columnPane(editor, step, key, name, memoKey) {
   });
   showPreview(name);
   const loop = findLoop(editor.flow);
-  const usable = loop && loop.source === 'excel' && loop.steps.includes(step);
+  const usable = loop && loop.source === 'excel' && containsStep(loop.steps, step.id);
   return el('div', null, input,
     el('datalist', { id: listId }, columns.map(column => el('option', { value: column.column, label: column.header || '' }))),
     preview,
@@ -218,7 +218,7 @@ function renderProperties(editor) {
     step.do === 'loop' ? null : el('button.btn.small.danger', { id: 'delete-step', text: t('Delete block'), onclick: () => editor.deleteSelection() })));
   const render = STEP_FORMS[step.do];
   if (render) render(panel, editor, step);
-  if (!['loop', 'wait'].includes(step.do)) panel.append(delayField(editor, step));
+  if (!['loop', 'wait', 'if'].includes(step.do)) panel.append(delayField(editor, step));
   panel.scrollTop = scroll;
 }
 
@@ -371,6 +371,42 @@ const STEP_FORMS = {
     panel.append(body);
     draw(current);
   },
+  if(panel, editor, step) {
+    const tests = {
+      exists: t('The element is on the page'), equals: t('The element equals'),
+      contains: t('The element contains'), url_contains: t('The URL contains'),
+    };
+    const select = el('select', {
+      'data-field': 'if-test',
+      onchange: () => {
+        step.test = select.value;
+        if (step.test === 'exists') step.value = '';
+        editor.changed();
+      },
+    }, Object.entries(tests).map(([key, text]) => el('option', { value: key, text, selected: key === step.test })));
+    panel.append(field(t('Condition'), select));
+    panel.append(el('label.check-line', null,
+      el('input', {
+        type: 'checkbox', id: 'if-negate', checked: Boolean(step.negate),
+        onchange: event => { step.negate = event.target.checked; editor.changedQuietly(); },
+      }),
+      t('Turn it around: Yes when this is NOT so')));
+    if (step.test !== 'url_contains') panel.append(el('div.divider'), targetEditor(editor, step));
+    if (step.test !== 'exists') panel.append(el('div.divider'), valueField(editor, step, 'value', t('Value')));
+    if (step.test !== 'url_contains') {
+      const seconds = el('input', {
+        type: 'number', id: 'if-seconds', min: '0', step: 'any', value: step.seconds || '', placeholder: String(IF_WAIT_SECONDS),
+        oninput: () => {
+          const value = parseFloat(seconds.value);
+          if (value > 0) step.seconds = value;
+          else delete step.seconds;
+          editor.changedQuietly();
+        },
+      });
+      panel.append(field(t('Look for up to (seconds)'), seconds, t('How long to look for the element before the answer is No. Empty means {seconds} s.', { seconds: IF_WAIT_SECONDS })));
+    }
+    panel.append(el('div.hint', { text: t('The answer never fails the row: Yes runs the blocks in the Yes branch, No runs the ones in the No branch. An empty branch does nothing.') }));
+  },
   manual_pause(panel, editor, step) {
     panel.append(textField(editor, step, 'message', t('Reminder'), {
       placeholder: t('e.g. Enter the login code, then click Continue'),
@@ -489,7 +525,7 @@ function elementSummary(editor, step, info) {
   box.append(el('div.row.wrap', { style: 'margin-bottom:6px' },
     el('span.badge.neutral', { text: t('Suggested: {name}', { name: STEP_NAMES[info.action] }) }),
     known ? el(info.match_count === 1 ? 'span.badge.ok' : 'span.badge.bad', { text: t('Matched {count} element(s)', { count: info.match_count }) }) : el('span.badge.neutral', { text: t('Matches: unknown') }),
-    info.action !== step.do && step.do !== 'read' && step.do !== 'ocr' && step.do !== 'verify' && step.do !== 'wait_for'
+    info.action !== step.do && !['read', 'ocr', 'verify', 'wait_for', 'if'].includes(step.do)
       ? el('button.btn.small', {
         id: 'switch-action',
         text: t('Change to {name}', { name: STEP_NAMES[info.action] }),
@@ -633,13 +669,15 @@ async function inspectAtBlock(editor, step, command) {
   editor.failedStep = null;
   renderCanvas(editor);
   const before = stepsBefore(editor.flow, step.id);
-  const position = before.findIndex(stepIsIncomplete);
+  // An "If" block on the way runs one of its branches, so what they hold counts too.
+  const reached = flattenSteps(before);
+  const position = reached.findIndex(stepIsIncomplete);
   if (position >= 0) {
-    editor.failedStep = before[position].id;
+    editor.failedStep = reached[position].id;
     renderCanvas(editor);
-    return { error: t('Block {position} ("{name}") is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[before[position].do] }) };
+    return { error: t('Block {position} ("{name}") is not filled in, so the run cannot get here yet. Fill it in or delete it.', { position: position + 1, name: STEP_NAMES[reached[position].do] }) };
   }
-  const unapproved = before.filter(item => ['login', 'click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
+  const unapproved = reached.filter(item => ['login', 'click', 'select', 'check'].includes(item.do) && !editor.approvedSteps.has(item.id));
   if (unapproved.length) {
     const names = unapproved.map(runningOrderLabel).join(', ');
     const message = t('To get to this block, the tool will really run the {count} block(s) before it, including: {names}. Blocks in the loop use the first Excel row. The block being checked is not carried out.', { count: before.length, names });
@@ -697,7 +735,8 @@ function watchInspection(command, onStep) {
         const event = JSON.parse(message.data);
         if (event.type === 'step') {
           show();
-          label.textContent = t('Block {index}/{total}: {label}', { index: event.index, total: event.total, label: event.label });
+          // A block inside an "If" block has no place of its own in the count.
+          label.textContent = event.index ? t('Block {index}/{total}: {label}', { index: event.index, total: event.total, label: event.label }) : event.label;
           if (onStep) onStep(event);
         } else if (event.type === 'paused') {
           show();

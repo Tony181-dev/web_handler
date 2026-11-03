@@ -269,6 +269,26 @@ class ChromeDriver:
     def wait_for(self, target, timeout):
         self._guard(lambda: self._resolve(target, timeout).wait_for(state="visible", timeout=timeout * 1000))
 
+    def appears(self, target, timeout):
+        """Whether the element shows within the time. Not finding it is an answer, not an error."""
+        selectors = [target["primary"], *(target.get("fallbacks") or [])]
+        deadline = time.monotonic() + timeout
+        while True:
+            if any(self._is_visible(target, selector) for selector in selectors):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            self._guard(lambda: self.page.wait_for_timeout(150))
+
+    def _is_visible(self, target, selector):
+        try:
+            return self._locator(target, selector).first.is_visible()
+        except Exception as error:
+            if self._closed(error):
+                raise BrowserClosed() from error
+            # A page in the middle of loading cannot answer yet.
+            return False
+
     def _visible_count(self, locator):
         try:
             return locator.count()

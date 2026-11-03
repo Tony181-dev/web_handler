@@ -275,6 +275,7 @@ class FakeDriver:
         self.current_url = "https://example.test/"
         self.notices = []
         self.login_form_found = True
+        self.shown = set()
 
     def _record(self, name, target=None, value=None):
         selector = target.get("primary") if target else None
@@ -309,6 +310,10 @@ class FakeDriver:
 
     def wait_for(self, target, timeout):
         self._record("wait_for", target)
+
+    def appears(self, target, timeout):
+        self.calls.append(("appears", target["primary"], timeout))
+        return target["primary"] in self.shown
 
     def ocr(self, target, timeout):
         self._record("ocr", target)
@@ -871,6 +876,122 @@ class WaitValidationTests(unittest.TestCase):
         for seconds in (None, 0, -1, "3", True):
             with self.subTest(seconds=seconds):
                 self.assertEqual(self.errors_for(seconds), ['The "Wait" block needs a number of seconds above 0.'])
+
+
+def if_flow(test="exists", negate=False, **fields):
+    return {"steps": [
+        {"id": "s1", "do": "goto", "url": "https://example.test/"},
+        {"id": "s2", "do": "if", "test": test, "negate": negate, "target": target("#password"), **fields,
+         "then": [{"id": "s3", "do": "click", "target": target("#login")}],
+         "else": [{"id": "s4", "do": "click", "target": target("#home")}]},
+        {"id": "s5", "do": "click", "target": target("#after")},
+    ]}
+
+
+class IfValidationTests(unittest.TestCase):
+    def errors(self, flow):
+        return [item["message"] for item in flow_module.validate(flow).errors]
+
+    def test_a_complete_if_block_is_fine(self):
+        self.assertEqual(self.errors(if_flow()), [])
+        self.assertEqual(self.errors(if_flow("contains", value="Hello")), [])
+        flow = if_flow("url_contains", value="/login")
+        del flow["steps"][1]["target"]
+        self.assertEqual(self.errors(flow), [])
+
+    def test_missing_parts_are_reported(self):
+        flow = if_flow()
+        flow["steps"][1]["target"] = target("")
+        self.assertIn('The "If" block has no element.', self.errors(flow))
+        self.assertIn('The "If" block has no value.', self.errors(if_flow("equals")))
+        self.assertIn('The "If" block has no condition.', self.errors(if_flow("sideways")))
+        self.assertIn('The "If" block needs a number of seconds above 0.', self.errors(if_flow(seconds=0)))
+        flow = if_flow()
+        flow["steps"][1]["then"] = []
+        flow["steps"][1]["else"] = []
+        self.assertIn('The "If" block has no blocks in either branch yet.', self.errors(flow))
+
+    def test_one_empty_branch_is_fine(self):
+        flow = if_flow()
+        flow["steps"][1]["else"] = []
+        self.assertEqual(self.errors(flow), [])
+
+    def test_no_loop_or_if_inside_a_branch(self):
+        for inner in ({"id": "s9", "do": "loop", "source": "count", "count": 1, "steps": []},
+                      {"id": "s9", "do": "if", "test": "url_contains", "value": "x", "then": [], "else": []}):
+            flow = if_flow()
+            flow["steps"][1]["then"].append(inner)
+            with self.subTest(inner=inner["do"]):
+                self.assertTrue(any("cannot be placed inside" in item for item in self.errors(flow)), self.errors(flow))
+
+    def test_blocks_in_a_branch_inside_the_loop_count_as_in_the_loop(self):
+        flow = {"excel": {"sheet": "S"}, "steps": [{"id": "s1", "do": "loop", "source": "excel", "steps": [
+            {"id": "s2", "do": "if", "test": "url_contains", "value": "{{B}}",
+             "then": [{"id": "s3", "do": "fill", "target": target("#x"), "value": "{{C}}"}], "else": []},
+        ]}]}
+        self.assertEqual(self.errors(flow), [])
+        self.assertEqual(flow_module.stop_column(flow), "B")
+        self.assertEqual([step["id"] for step, inside in flow_module.walk(flow) if inside], ["s2", "s3"])
+
+
+class IfRunTests(unittest.TestCase):
+    setUp = RunnerTests.setUp
+    tearDown = RunnerTests.tearDown
+    run_flow = RunnerTests.run_flow
+    statuses = RunnerTests.statuses
+
+    def clicked(self):
+        return [call[1] for call in self.driver.calls if call[0] == "click"]
+
+    def test_only_the_branch_the_page_answers_runs(self):
+        driver = FakeDriver()
+        driver.shown.add("#password")
+        outcome, _ = self.run_flow(if_flow(), driver=driver)
+        self.assertEqual(outcome, "finished")
+        self.assertEqual(self.clicked(), ["#login", "#after"])
+        self.assertIn({"type": "branch", "step": "s2", "branch": "then"}, self.events)
+        self.assertEqual([event["step"] for event in self.events if event["type"] == "step"], ["s1", "s2", "s3", "s5"])
+
+        outcome, _ = self.run_flow(if_flow())
+        self.assertEqual(self.clicked(), ["#home", "#after"])
+        self.assertEqual(self.driver.calls[1], ("appears", "#password", 3))
+
+    def test_negate_turns_the_answer_around(self):
+        self.run_flow(if_flow(negate=True))
+        self.assertEqual(self.clicked(), ["#login", "#after"])
+
+    def test_text_and_url_conditions(self):
+        driver = FakeDriver(values={"#password": "Hello world"})
+        self.run_flow(if_flow("contains", value="world"), driver=driver)
+        self.assertEqual(self.clicked()[0], "#login")
+        driver = FakeDriver(values={"#password": "Hello world"})
+        self.run_flow(if_flow("equals", value="world"), driver=driver)
+        self.assertEqual(self.clicked()[0], "#home")
+        self.run_flow(if_flow("url_contains", value="example.test"))
+        self.assertEqual(self.clicked()[0], "#login")
+
+    def test_a_missing_element_is_a_no_and_not_a_failure(self):
+        driver = FakeDriver(fail_on={("read", "#password"): "not found"})
+        outcome, _ = self.run_flow(if_flow("equals", value="x"), driver=driver)
+        self.assertEqual(outcome, "finished")
+        self.assertEqual(self.clicked(), ["#home", "#after"])
+
+    def test_a_failing_block_in_a_branch_names_itself_and_fails_the_row(self):
+        flow = {"steps": [{"id": "s1", "do": "loop", "source": "count", "count": 2, "steps": [
+            {"id": "s2", "do": "if", "test": "url_contains", "value": "example",
+             "then": [{"id": "s3", "do": "click", "target": target("#broken")}], "else": []},
+            {"id": "s4", "do": "click", "target": target("#next")},
+        ]}]}
+        driver = FakeDriver(fail_on={("click", "#broken"): "gone"})
+        outcome, _ = self.run_flow(flow, driver=driver)
+        self.assertEqual(outcome, "finished")
+        self.assertEqual(self.statuses(), {1: "Failed", 2: "Failed"})
+        failed = [event for event in self.events if event["type"] == "row_done"][0]
+        self.assertIn("#broken", failed["message"])
+        branch = [event for event in self.events if event["type"] == "branch"][0]
+        self.assertEqual(branch["row"], 1)
+        inner = [event for event in self.events if event["type"] == "step" and event["step"] == "s3"][0]
+        self.assertEqual((inner["row"], inner["stage"]), (1, "loop"))
 
 
 class FlowTemplateTests(unittest.TestCase):
