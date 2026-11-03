@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,6 +20,9 @@ import build_probe  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / "tools" / "requirements.txt"
+# Every wheel the package ships, pinned with its SHA-256: pip refuses a file that differs,
+# so a library replaced upstream cannot slip into a build. Made from REQUIREMENTS by --update-lock.
+LOCK = ROOT / "tools" / "requirements.lock"
 CACHE_DIR = ROOT / "build" / "cache"
 STAGING_DIR = ROOT / "build" / "package"
 DIST_DIR = ROOT / "dist"
@@ -31,16 +35,40 @@ def version():
     return namespace["__version__"]
 
 
-def download_wheels(destination):
+def pip_download(destination, *arguments):
     subprocess.run(
         [
             sys.executable, "-m", "pip", "download", "--disable-pip-version-check",
             "--only-binary=:all:", "--platform", "win_amd64", "--python-version", "3.12",
             "--implementation", "cp", "--abi", "cp312",
-            "--dest", str(destination), "-r", str(REQUIREMENTS),
+            "--dest", str(destination), *arguments,
         ],
         check=True,
     )
+
+
+def download_wheels(destination):
+    pip_download(destination, "--require-hashes", "--no-deps", "-r", str(LOCK))
+
+
+def lock_line(wheel):
+    """name==version with the wheel's hash, from a wheel file name such as numpy-2.5.4-cp312-...whl."""
+    name, wheel_version = wheel.name.split("-")[:2]
+    return f"{name}=={wheel_version} \\\n    --hash=sha256:{build_probe.sha256(wheel)}"
+
+
+def update_lock():
+    """Resolve REQUIREMENTS again and pin what it gives. Review the changes before building with them."""
+    with tempfile.TemporaryDirectory() as folder:
+        pip_download(Path(folder), "-r", str(REQUIREMENTS))
+        wheels = sorted(Path(folder).glob("*.whl"), key=lambda path: path.name.lower())
+        lines = [lock_line(wheel) for wheel in wheels]
+    LOCK.write_text(
+        "# Made by tools/build_package.py --update-lock from requirements.txt. Do not edit by hand.\n"
+        + "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Pinned {len(lines)} wheels in {LOCK}")
 
 
 def playwright_site():
@@ -53,7 +81,7 @@ def playwright_site():
         subprocess.run(
             [
                 sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
-                "--target", str(tools), "-r", str(REQUIREMENTS),
+                "--require-hashes", "--target", str(tools), "-r", str(LOCK),
             ],
             check=True,
         )
@@ -141,7 +169,8 @@ def build(with_chromium, with_installer):
     build_probe.repack_python(archive, offline / "python.zip")
     print("Downloading libraries...")
     download_wheels(offline / "wheels")
-    shutil.copy2(REQUIREMENTS, offline / "requirements.txt")
+    # The machine installing it checks every wheel against these hashes too.
+    shutil.copy2(LOCK, offline / "requirements.txt")
     if with_chromium:
         print("Packing Chromium...")
         chromium_zip(offline / "chromium.zip")
@@ -170,5 +199,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-chromium", action="store_true")
     parser.add_argument("--no-installer", action="store_true")
+    parser.add_argument("--update-lock", action="store_true", help="pin the libraries again from requirements.txt, then stop")
     options = parser.parse_args()
-    build(not options.no_chromium, not options.no_installer)
+    if options.update_lock:
+        update_lock()
+    else:
+        build(not options.no_chromium, not options.no_installer)

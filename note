@@ -41,7 +41,13 @@ python tools/build_package.py
 
 Ba file `.bat` đã gộp còn hai (từ 2026-11-03 không còn `Build.bat`):
 - `Start.bat`: mở app, dùng hằng ngày.
-- `Install.bat`: một file cho hai việc, tự nhận ra mình đang ở đâu. Trong thư mục mã nguồn (có `tools/build_package.py`) thì đóng gói như trên, các tùy chọn như `--no-installer` được chuyển cho `build_package.py`. Trong zip đã giải nén thì cài vào `%LOCALAPPDATA%\Programs\WebHandler` hoặc thư mục được truyền vào, dùng khi công ty chặn exe.
+- `Install.bat`: một file cho hai việc, tự nhận ra mình đang ở đâu. Trong thư mục mã nguồn (có `tools/build_package.py`) thì đóng gói như trên, các tùy chọn như `--no-installer` được chuyển cho `build_package.py`. Trong zip đã giải nén thì cài vào `%LOCALAPPDATA%\Programs\WebHandler` hoặc thư mục được truyền vào, dùng khi công ty chặn exe. Chỉ cài vào thư mục trống hoặc bản Web Handler cũ (có `Start.bat` và `app\main.py`), vì bước chép dùng `robocopy /MIR` sẽ xóa file lạ trong `app` và `offline`.
+
+Bảo mật của các file cài đặt (rà ngày 2026-11-04):
+- `Start.bat`, `Install.bat`, `Probe.bat` đặt `NoDefaultCurrentDirectoryInExePath=1` nên `py`/`python` không bị tìm trong thư mục hiện tại. Công cụ Windows gọi bằng đường dẫn đầy đủ (`%SystemRoot%\System32\robocopy.exe`, `powershell.exe`, `tar.exe`), vì `find` của Git từng chen vào chỗ `find` của Windows.
+- `PYTHONNOUSERSITE=1`: Python của app không nạp thư viện cá nhân trong `%APPDATA%\Python`.
+- Đường dẫn luôn trong nháy kép khi `echo`, vì tên thư mục, kể cả tên user Windows, được phép có `&`. Thư mục đích đến PowerShell qua biến môi trường, không ghép vào câu lệnh.
+- Thư viện khóa theo hash: `tools/requirements.lock` ghim cả 22 wheel (kể cả thư viện phụ như numpy, onnxruntime) kèm SHA-256. Build tải bằng `--require-hashes --no-deps`, và file này được chép thành `offline/requirements.txt` nên máy cài cũng kiểm tra từng wheel. Đã thử: wheel bị sửa 1 byte bị từ chối. Muốn nâng thư viện thì sửa `tools/requirements.txt`, chạy `python tools/build_package.py --update-lock`, xem lại thay đổi rồi mới build. Chromium vẫn tải qua Playwright (HTTPS, không ghim hash).
 
 ## Tính năng đã có
 
@@ -243,6 +249,7 @@ Ba file `.bat` đã gộp còn hai (từ 2026-11-03 không còn `Build.bat`):
 - Cột khối bên trái rộng thêm 35%, kéo giãn được. Code kéo giãn của hai cột dùng chung `panelResizer` trong `builder.js`.
 - Thêm khối `If` với hai nhánh Yes/No, nút View ngang/dọc và Zoom cho sơ đồ.
 - Bỏ `Build.bat`, gộp việc đóng gói vào `Install.bat`.
+- Vá các file cài đặt: Install.bat không cài đè lên thư mục lạ, đường dẫn có `&` không bị chạy thành lệnh, công cụ Windows gọi bằng đường dẫn đầy đủ, không tìm chương trình trong thư mục hiện tại, Python không nạp thư viện cá nhân, thư viện khóa theo SHA-256 (`tools/requirements.lock`).
 
 ## File chính
 
@@ -284,6 +291,7 @@ Tài liệu thiết kế ở `docs/superpowers/`: spec `specs/2026-10-31-web-han
 - **File Excel đang mở trong Excel:** chưa thử.
 - **Trang đã đăng nhập sẵn (với khối `Fill` và `Click`, khối `Login` không bị):** khi sửa khối phía trước hoặc kiểm tra lùi về khối trước, `Check on live page` chạy lại từ đầu. Trang tự chuyển qua màn hình đăng nhập có thể làm khối đăng nhập báo không thấy ô nhập. `Run` cũng có thể gặp lỗi này nếu phiên đăng nhập còn hiệu lực.
 - **Xem lại lần chạy cũ:** sơ đồ chỉ sáng trong lúc app còn giữ lần chạy đó. Mở lại lần chạy đã kết thúc thì sơ đồ không có màu.
+- **Sự cố DLL hệ thống trên máy phát triển, 2026-11-03 khoảng 23:53:** `C:\Windows\System32\version.dll` và `authz.dll` cùng biến mất. VS Code, Chrome, Python, PowerShell, WMI, Base Filtering Engine, tường lửa Windows và WLAN đều lỗi "module not found". Đã rà: dự án không có lệnh nào ghi hay xóa trong `C:\Windows`. Lỗi xuất hiện trước lệnh đầu tiên bị hỏng. Nghi Avast cách ly nhầm, vì cả hai đều là DLL hay bị giả mạo, nhưng chưa xác nhận được do Avast khóa log. `version.dll` sau đó được đặt lại (bản gốc, chữ ký hợp lệ, không còn là hard link tới WinSxS). Lúc rà ngày 2026-11-04, `authz.dll` vẫn thiếu: cần quyền admin để khôi phục (xem Avast Virus Chest, hoặc chạy `DISM /Online /Cleanup-Image /RestoreHealth` rồi `sfc /scannow`). Script kiểm tra DLL thiếu chỉ đọc file, nằm trong scratchpad của phiên đó, không thuộc repo.
 - **Avast:** trên máy phát triển, Avast đã cách ly `Start.bat` (`IDP.HELU.PSD11`) khi gói chạy từ `C:\Windows\Temp` qua script. Chạy từ ổ `F:` thì không bị. Các bản thử nghiệm bị cách ly vẫn nằm trong khu cách ly của Avast.
 - **Quy trình YouTube đang lưu:** ở lần kiểm tra cuối, ô tìm kiếm đang dùng khối `Select` nên không chạy được, cần đổi sang `Fill`. Khối `Open link` khi đó còn trống.
 

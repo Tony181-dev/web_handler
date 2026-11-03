@@ -3,10 +3,14 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
 
-rem Keep any Python settings on this machine from affecting the bundled Python.
+rem Keep any Python settings on this machine from affecting the bundled Python,
+rem including libraries installed for this user in %APPDATA%\Python.
 set "PYTHONHOME="
 set "PYTHONPATH="
+set "PYTHONNOUSERSITE=1"
 set "PYTHONUTF8=1"
+rem py and python are only looked up on PATH, never in this folder.
+set "NoDefaultCurrentDirectoryInExePath=1"
 
 set "RUNTIME=%~dp0runtime"
 set "PORTABLE=%RUNTIME%\python\python.exe"
