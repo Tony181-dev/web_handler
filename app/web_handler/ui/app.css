@@ -169,7 +169,7 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .var-chip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .tool[data-kind=loop] { border: 2px dashed var(--loop); background: var(--loop-soft); color: var(--loop-text); font-weight: 600; }
 .canvas {
-  grid-row: 1; position: relative; overflow: auto; padding: 18px; min-width: 0; user-select: none;
+  grid-row: 1; position: relative; overflow: auto; padding: 18px 18px 58px; min-width: 0; user-select: none;
   background-color: var(--bg); background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 16px 16px;
 }
 .lane { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 0; min-height: 66px; }
@@ -215,7 +215,9 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .if-frame.invalid::after { content: "!"; position: absolute; top: -9px; right: -9px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bad); color: #fff; font-size: 12px; font-weight: 700; }
 .if-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 8px; color: var(--if-text); cursor: grab; touch-action: none; }
 .if-head b { flex: none; }
-.if-head span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--muted); }
+.if-head > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--muted); }
+/* What the condition compares, boxed, so the words between stand apart from it. */
+.cond-part { padding: 0 5px; border: 1px solid var(--if); border-radius: 5px; background: var(--surface); color: var(--text); font-weight: 600; }
 .branches { display: flex; flex-direction: column; gap: 8px; }
 .branch { min-width: 0; padding: 6px 8px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
 .branch-label { margin-bottom: 4px; font-size: 12px; font-weight: 700; }
@@ -225,7 +227,11 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .branch.taken { border-color: var(--ok); }
 .branch.skipped { opacity: .45; }
 /* The vertical view: one block under the next, the arrows pointing down. */
-.canvas.vertical .lane, .run-diagram.vertical .lane { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
+/* The blocks stand on the middle line, as the loop and the "If" blocks do. */
+.canvas.vertical .lane, .run-diagram.vertical .lane { flex-direction: column; flex-wrap: nowrap; align-items: center; gap: 0; }
+/* The variable hangs on the right of its block, so the block itself, not the pair, is in the middle. */
+.canvas.vertical .node-pair, .run-diagram.vertical .node-pair { position: relative; }
+.canvas.vertical .var-chip, .run-diagram.vertical .var-chip { position: absolute; top: 0; left: calc(100% - 1px); height: 100%; margin-left: 0; }
 .canvas.vertical .item, .run-diagram.vertical .item { flex-direction: column; }
 .canvas.vertical .item.block, .run-diagram.vertical .item.block { flex: none; align-self: stretch; }
 .canvas.vertical .arrow, .run-diagram.vertical .arrow { height: 22px; line-height: 22px; transform: rotate(90deg); }
@@ -253,6 +259,10 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .finder-box { padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .finder-box .field { margin-bottom: 6px; }
 .canvas-log { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; right: 8px; bottom: 8px; z-index: 6; }
+/* The Excel file, in the opposite corner on the same line as the Log button. */
+.canvas-excel { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; left: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 110px); }
+.canvas-excel[hidden] { display: none; }
+.canvas-excel .file-name { min-width: 0; padding: 4px 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: var(--shadow); }
 .panel-resize { position: absolute; grid-row: 1 / 2; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; touch-action: none; }
 #inspector-resize { grid-column: 3 / 4; left: -3px; }
 #palette-resize { grid-column: 1 / 2; right: -3px; }
@@ -354,6 +364,6 @@ table.data tr:last-child td { border-bottom: 0; }
   .palette .section-label { display: none; }
   .tool { flex: none; margin: 0; }
   .canvas { grid-row: 2; }
-  .canvas-tools { grid-column: 1 / -1; grid-row: 2; }
+  .canvas-tools, .canvas-excel, .canvas-log { grid-column: 1 / -1; grid-row: 2; }
   .inspector { grid-row: 3; }
 }

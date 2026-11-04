@@ -13,6 +13,8 @@ const PANEL_KEY_STEP = 16;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.1;
+// A mouse wheel notch is one zoom step; a touchpad's small moves add up to one first.
+const WHEEL_STEP_PX = 50;
 const HISTORY_LIMIT = 200;
 const PASSWORD_SAVE_DELAY_MS = 300;
 // The labels stay in English in every language, as the names of these modes.
@@ -130,6 +132,18 @@ class FlowEditor {
   selectMany(ids) {
     this.selection = new Set(ids);
     this.render();
+  }
+
+  // Shift+click: the block joins the selection, or leaves it if it was in. The loop is only ever selected alone.
+  toggleSelect(id) {
+    const step = findStep(this.flow, id);
+    const loop = findLoop(this.flow);
+    if (!step || step.do === 'loop' || (loop && this.selection.has(loop.id))) { this.select(id); return; }
+    const ids = new Set(this.selection);
+    if (ids.has(id)) ids.delete(id);
+    else ids.add(id);
+    if (ids.size <= 1) this.select(ids.size ? [...ids][0] : null);
+    else this.selectMany([...ids]);
   }
 
   // A typed password waits here only until it is saved, and is never part of the flow or its history.
@@ -366,10 +380,12 @@ class FlowEditor {
     const bar = this.runbarNode;
     const loop = findLoop(this.flow);
     const parts = [];
+    // The file itself is chosen in the canvas's bottom left corner, level with the Log button.
+    const corner = [];
     if (!loop || loop.source === 'excel') {
       const settings = this.flow.excel || {};
       const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : t('No Excel file selected');
-      parts.push(
+      corner.push(
         el('button.btn', { id: 'pick-excel', text: t('Select Excel'), onclick: () => this.pickExcel() }),
         this.excelPath ? attachHelp(el('span.file-name', { id: 'excel-name', text: name }), this.excelPath) : el('span.file-name', { id: 'excel-name', text: name }));
       if (this.sheets.length) {
@@ -430,6 +446,8 @@ class FlowEditor {
       el('button.btn', { id: 'run-trial', text: t('Run once'), onclick: () => startRunFlow(this, 'trial') }),
       el('button.btn.primary', { id: 'run-full', text: t('▶ Run'), onclick: () => startRunFlow(this, 'full') }));
     bar.replaceChildren(...parts);
+    this.excelCornerNode.replaceChildren(...corner);
+    this.excelCornerNode.hidden = !corner.length;
     this.showRowCount();
   }
 
@@ -451,13 +469,42 @@ class FlowEditor {
     this.renderCanvasTools();
   }
 
-  setZoom(wanted) {
+  // anchor, a pointer event, is the point that stays where it is; without one the diagram grows from its top left.
+  setZoom(wanted, anchor) {
+    const before = this.zoom;
     this.zoom = clampZoom(wanted);
     memory.set('canvas.zoom', String(this.zoom));
     // Only the size changes, so the blocks are not drawn again.
     const content = document.getElementById('canvas-content');
-    if (content) content.style.zoom = String(this.zoom);
+    if (content) {
+      const box = content.getBoundingClientRect();
+      content.style.zoom = String(this.zoom);
+      if (anchor && this.zoom !== before) {
+        const grown = this.zoom / before - 1;
+        this.canvasNode.scrollLeft += (anchor.clientX - box.left) * grown;
+        this.canvasNode.scrollTop += (anchor.clientY - box.top) * grown;
+      }
+    }
     this.renderCanvasTools();
+  }
+
+  // The wheel zooms the diagram around the pointer. Shift + wheel scrolls it up and down instead,
+  // and a sideways touchpad swipe still scrolls it sideways.
+  onWheel(event) {
+    if (event.shiftKey && !event.ctrlKey) {
+      event.preventDefault();
+      this.canvasNode.scrollTop += event.deltaY || event.deltaX;
+      return;
+    }
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    const delta = event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1);
+    // Turning the other way starts the count again.
+    if (Math.sign(delta) !== Math.sign(this.wheelRest || 0)) this.wheelRest = 0;
+    this.wheelRest += delta;
+    if (Math.abs(this.wheelRest) < WHEEL_STEP_PX) return;
+    this.wheelRest = 0;
+    this.setZoom(this.zoom + (delta < 0 ? ZOOM_STEP : -ZOOM_STEP), event);
   }
 
   resetZoom() {
@@ -473,9 +520,9 @@ class FlowEditor {
         title: vertical ? t('Show the blocks from left to right') : t('Show the blocks from top to bottom'),
         'aria-pressed': String(vertical), onclick: () => this.toggleView(),
       }),
-      el('button.btn.small', { id: 'zoom-out', text: '−', title: t('Zoom out (Ctrl + mouse wheel)'), 'aria-label': t('Zoom out'), disabled: this.zoom <= ZOOM_MIN, onclick: () => this.setZoom(this.zoom - ZOOM_STEP) }),
-      el('span.zoom-level', { id: 'zoom-level', text: `${Math.round(this.zoom * 100)}%` }),
-      el('button.btn.small', { id: 'zoom-in', text: '+', title: t('Zoom in (Ctrl + mouse wheel)'), 'aria-label': t('Zoom in'), disabled: this.zoom >= ZOOM_MAX, onclick: () => this.setZoom(this.zoom + ZOOM_STEP) }),
+      el('button.btn.small', { id: 'zoom-out', text: '−', title: t('Zoom out (mouse wheel down)'), 'aria-label': t('Zoom out'), disabled: this.zoom <= ZOOM_MIN, onclick: () => this.setZoom(this.zoom - ZOOM_STEP) }),
+      el('span.zoom-level', { id: 'zoom-level', text: `${Math.round(this.zoom * 100)}%`, title: t('Mouse wheel zooms. Shift + mouse wheel scrolls.') }),
+      el('button.btn.small', { id: 'zoom-in', text: '+', title: t('Zoom in (mouse wheel up)'), 'aria-label': t('Zoom in'), disabled: this.zoom >= ZOOM_MAX, onclick: () => this.setZoom(this.zoom + ZOOM_STEP) }),
       el('button.btn.small', { id: 'zoom-reset', text: t('⟲ Reset'), title: t('Back to 100% and to the start of the diagram'), onclick: () => this.resetZoom() }));
   }
 
@@ -586,15 +633,12 @@ async function renderBuilder(id) {
 
   editor.canvasNode = el('div.canvas', { id: 'canvas' });
   editor.canvasNode.addEventListener('pointerdown', event => startLasso(event, editor));
-  editor.canvasNode.addEventListener('wheel', event => {
-    if (!event.ctrlKey) return;
-    // Ctrl + wheel zooms the diagram, not the whole app.
-    event.preventDefault();
-    editor.setZoom(editor.zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
-  }, { passive: false });
+  // Not passive, so that the wheel zooms the diagram rather than scrolling it or zooming the whole app.
+  editor.canvasNode.addEventListener('wheel', event => editor.onWheel(event), { passive: false });
   editor.canvasToolsNode = el('div.canvas-tools', { id: 'canvas-tools' });
   editor.inspectorNode = el('aside.inspector', { id: 'inspector' });
   editor.runbarNode = el('div.runbar', { id: 'runbar' });
+  editor.excelCornerNode = el('div.canvas-excel', { id: 'canvas-excel' });
   editor.clearNode = el('button.btn.danger', { id: 'clear-all', text: t('Clear all'), style: 'width:100%;margin-top:6px', onclick: () => editor.clearAll() });
 
   attachHelp(editor.clearNode, t('Deletes every block, the loop and the Excel setup of this flow.'));
@@ -618,7 +662,7 @@ async function renderBuilder(id) {
     editor.clearNode);
 
   const builder = el('div.builder', null, palette, editor.canvasNode, editor.inspectorNode, editor.runbarNode);
-  builder.append(paletteResizer(builder), inspectorResizer(builder), editor.canvasToolsNode, el('div.canvas-log', null, logButton()));
+  builder.append(paletteResizer(builder), inspectorResizer(builder), editor.canvasToolsNode, editor.excelCornerNode, el('div.canvas-log', null, logButton()));
   view.replaceChildren(builder);
 
   document.addEventListener('keydown', editor.onKey);

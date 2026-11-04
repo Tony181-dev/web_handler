@@ -1493,6 +1493,21 @@ class IfBlockUiTests(AppTestCase):
         self.assertEqual((step["test"], step["value"], step["negate"]), ("url_contains", "/login", True))
         expect(self.page.locator("#delay-details")).to_have_count(0)
 
+    def test_the_condition_boxes_what_it_compares_and_not_the_words(self):
+        self.add_if()
+        self.page.fill("#target-selector", "#status")
+        self.page.select_option("[data-field=if-test]", "equals")
+        self.page.locator("[data-field=value]").fill("{{C}}")
+        head = self.page.locator(".if-head")
+        expect(head).to_contain_text("#status equals {{C}}")
+        expect(head.locator(".cond-part")).to_have_text(["#status", "{{C}}"])
+        self.shot("if_condition_parts")
+        self.page.select_option("#language", "vi")
+        expect(self.page.locator(".if-head")).to_contain_text("#status bằng {{C}}")
+        expect(self.page.locator(".if-head .cond-part")).to_have_text(["#status", "{{C}}"])
+        self.page.select_option("#language", "en")
+        expect(self.page.locator("html")).to_have_attribute("lang", "en")
+
     def test_duplicate_copies_the_branches_with_new_ids_and_undo_removes_them(self):
         self.add_if()
         self.drag_tool("click", ".branch[data-branch=then]")
@@ -1599,15 +1614,99 @@ class CanvasViewTests(AppTestCase):
         expect(self.page.locator("#zoom-level")).to_have_text("100%")
         self.assertAlmostEqual(self.boxes()[0]["width"], width, delta=1)
 
-    def test_ctrl_wheel_zooms_and_dragging_still_lands_right_when_zoomed(self):
+    def test_the_wheel_zooms_and_shift_wheel_does_not(self):
         self.build()
         box = self.page.locator("#canvas").bounding_box()
         self.page.mouse.move(box["x"] + 300, box["y"] + 300)
-        self.page.keyboard.down("Control")
         self.page.mouse.wheel(0, -100)
-        self.page.keyboard.up("Control")
         expect(self.page.locator("#zoom-level")).to_have_text("110%")
+        self.page.mouse.wheel(0, 100)
+        self.page.mouse.wheel(0, 100)
+        expect(self.page.locator("#zoom-level")).to_have_text("90%")
+        # A touchpad's small moves add up to one step.
         for _ in range(4):
+            self.page.mouse.wheel(0, -10)
+        expect(self.page.locator("#zoom-level")).to_have_text("90%")
+        self.page.mouse.wheel(0, -10)
+        expect(self.page.locator("#zoom-level")).to_have_text("100%")
+        self.page.keyboard.down("Shift")
+        self.page.mouse.wheel(0, -100)
+        self.page.keyboard.up("Shift")
+        self.page.wait_for_timeout(100)
+        expect(self.page.locator("#zoom-level")).to_have_text("100%")
+
+    def test_the_wheel_keeps_the_block_under_the_pointer(self):
+        self.new_flow()
+        for kind in ("goto", "fill", "click", "wait", "check", "goto", "fill", "click", "wait", "check"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+        self.page.click("#view-toggle")
+        node = self.page.locator("#canvas .node").nth(7)
+        box = node.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        self.page.mouse.move(x, y)
+        for _ in range(3):
+            self.page.mouse.wheel(0, -100)
+        expect(self.page.locator("#zoom-level")).to_have_text("130%")
+        box = node.bounding_box()
+        self.assertLess(box["y"], y)
+        self.assertGreater(box["y"] + box["height"], y)
+        self.page.click("#zoom-reset")
+
+    def test_shift_click_adds_blocks_to_the_selection_and_takes_them_out(self):
+        self.build()
+        ids = self.page.evaluate("window.currentEditor.flow.steps.map(step => step.id)")
+        selected = lambda: sorted(self.page.evaluate("[...window.currentEditor.selection]"))
+        nodes = self.page.locator("#canvas .node")
+        nodes.nth(0).click()
+        nodes.nth(2).click(modifiers=["Shift"])
+        expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
+        self.assertEqual(selected(), sorted([ids[0], ids[2]]))
+        expect(nodes.nth(0)).to_have_class(re.compile("multi"))
+        nodes.nth(1).click(modifiers=["Shift"])
+        expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 3")
+        expect(self.page.locator("#make-loop")).to_be_enabled()
+        self.shot("shift_click")
+        nodes.nth(0).click(modifiers=["Shift"])
+        self.assertEqual(selected(), sorted([ids[1], ids[2]]))
+        nodes.nth(2).click(modifiers=["Shift"])
+        self.assertEqual(selected(), [ids[1]])
+        expect(nodes.nth(1)).to_have_class(re.compile("selected"))
+        # A click on empty canvas with Shift held keeps the selection; without it clears it.
+        self.page.locator("#canvas").click(position={"x": 600, "y": 500}, modifiers=["Shift"])
+        self.assertEqual(selected(), [ids[1]])
+        nodes.nth(0).click()
+        self.assertEqual(selected(), [ids[0]])
+
+    def test_a_box_drawn_inside_the_loop_selects_its_blocks_not_the_loop(self):
+        self.build()
+        self.page.evaluate("window.currentEditor.selectMany(window.currentEditor.flow.steps.map(step => step.id))")
+        self.page.click("#make-loop")
+        self.lasso("#canvas .node >> nth=1", "#canvas .node >> nth=2")
+        inner = self.page.evaluate("findLoop(window.currentEditor.flow).steps.slice(1).map(step => step.id)")
+        self.assertEqual(sorted(self.page.evaluate("[...window.currentEditor.selection]")), sorted(inner))
+        # Shift + box adds to it.
+        self.page.locator("#canvas .node").nth(0).click()
+        self.page.keyboard.down("Shift")
+        self.lasso("#canvas .node >> nth=2", "#canvas .node >> nth=2")
+        self.page.keyboard.up("Shift")
+        expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
+
+    def test_vertical_view_puts_every_block_on_the_middle_line(self):
+        self.new_flow()
+        for kind in ("goto", "read", "if", "click"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+        self.page.click("#view-toggle")
+        middle = lambda box: box["x"] + box["width"] / 2
+        nodes = self.page.locator("#canvas > .canvas-content > .lane > .item .node")
+        expect(nodes).to_have_count(3)
+        frame = middle(self.page.locator(".if-frame").bounding_box())
+        for index in range(3):
+            self.assertAlmostEqual(middle(nodes.nth(index).bounding_box()), frame, delta=2)
+        self.shot("vertical_middle")
+
+    def test_dragging_still_lands_right_when_zoomed(self):
+        self.build()
+        for _ in range(5):
             self.page.click("#zoom-in")
         expect(self.page.locator("#zoom-level")).to_have_text("150%")
         first, _, third = self.boxes()
@@ -1760,9 +1859,35 @@ class HideShowTests(AppTestCase):
         self.page.click("#open-demo")
         expect(self.page.locator("#excel-sheet")).to_be_visible()
         run = self.page.locator("#run-full").bounding_box()
-        pick = self.page.locator("#pick-excel").bounding_box()
-        self.assertLess(abs((run["y"] + run["height"] / 2) - (pick["y"] + pick["height"] / 2)), 4)
+        sheet = self.page.locator("#excel-sheet").bounding_box()
+        self.assertLess(abs((run["y"] + run["height"] / 2) - (sheet["y"] + sheet["height"] / 2)), 4)
         self.assertLessEqual(run["x"] + run["width"], self.page.viewport_size["width"])
+
+    def test_the_excel_file_is_chosen_in_the_left_corner_level_with_the_log_button(self):
+        self.page.click("#open-demo")
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        # The sheet list comes once the file is read, and the corner is drawn again then.
+        expect(self.page.locator("#excel-sheet")).to_be_visible()
+        expect(self.page.locator("#pick-excel")).to_be_visible()
+        pick = self.page.locator("#pick-excel").bounding_box()
+        name = self.page.locator("#excel-name").bounding_box()
+        log = self.page.locator(".log-toggle:visible").bounding_box()
+        canvas = self.page.locator("#canvas").bounding_box()
+        self.assertAlmostEqual(pick["y"] + pick["height"] / 2, log["y"] + log["height"] / 2, delta=2)
+        self.assertAlmostEqual(name["y"] + name["height"] / 2, log["y"] + log["height"] / 2, delta=2)
+        self.assertLess(pick["x"] - canvas["x"], 16)
+        self.assertLess(pick["x"] + pick["width"], name["x"])
+        self.assertLess(name["x"] + name["width"], log["x"])
+        self.assertEqual(self.page.locator("#runbar #pick-excel").count(), 0)
+        self.shot("excel_corner")
+        # A loop counted by hand has no Excel file to choose.
+        self.page.evaluate("""() => {
+            const editor = window.currentEditor;
+            findLoop(editor.flow).source = 'count';
+            editor.changed();
+        }""")
+        expect(self.page.locator("#pick-excel")).to_have_count(0)
+        expect(self.page.locator("#canvas-excel")).to_be_hidden()
 
 
 class VariableChipTests(AppTestCase):

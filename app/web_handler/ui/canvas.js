@@ -83,18 +83,34 @@ function stepSummary(step) {
   }
 }
 
-// What an "If" block asks, as a sentence.
-function conditionText(step) {
+// What an "If" block asks, in pieces: the words as strings, and what it compares as { part: text },
+// so the diagram can set the element and the value apart from the words between them.
+function conditionPieces(step) {
   const element = step.target && step.target.primary;
   const value = step.value || '…';
-  if (!element && step.test !== 'url_contains') return t('no element yet');
+  // The sentence is translated with its placeholders still in, then the placeholders become pieces.
+  const fill = (template, values) => template.split(/(\{\w+\})/).filter(Boolean).map(piece => {
+    const name = /^\{(\w+)\}$/.exec(piece);
+    return name && name[1] in values ? { part: values[name[1]] } : piece;
+  });
+  if (!element && step.test !== 'url_contains') return [t('no element yet')];
   switch (step.test) {
-    case 'exists': return step.negate ? t('{element} is not on the page', { element }) : t('{element} is on the page', { element });
-    case 'equals': return step.negate ? t('{element} does not equal {value}', { element, value }) : t('{element} equals {value}', { element, value });
-    case 'contains': return step.negate ? t('{element} does not contain {value}', { element, value }) : t('{element} contains {value}', { element, value });
-    case 'url_contains': return step.negate ? t('URL without {text}', { text: value }) : t('URL with {text}', { text: value });
-    default: return t('no condition yet');
+    case 'exists': return fill(step.negate ? t('{element} is not on the page') : t('{element} is on the page'), { element });
+    case 'equals': return fill(step.negate ? t('{element} does not equal {value}') : t('{element} equals {value}'), { element, value });
+    case 'contains': return fill(step.negate ? t('{element} does not contain {value}') : t('{element} contains {value}'), { element, value });
+    case 'url_contains': return fill(step.negate ? t('URL without {text}') : t('URL with {text}'), { text: value });
+    default: return [t('no condition yet')];
   }
+}
+
+// The same, as a sentence.
+function conditionText(step) {
+  return conditionPieces(step).map(piece => (typeof piece === 'string' ? piece : piece.part)).join('');
+}
+
+// The same, for the diagram: what is compared stands in a box of its own.
+function conditionNodes(step) {
+  return conditionPieces(step).map(piece => (typeof piece === 'string' ? piece : el('span.cond-part', { text: piece.part })));
 }
 
 function stepIsIncomplete(step) {
@@ -235,7 +251,7 @@ function renderItem(editor, step, index, withArrow) {
     onkeydown: event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        editor.select(step.id);
+        pick(editor, step.id, event);
       }
     },
   }, el('b', { text: STEP_NAMES[step.do] }), el('span', { text: stepSummary(step), title: stepSummary(step) }));
@@ -273,7 +289,7 @@ function renderLoop(editor, loop) {
       })),
     lane);
   frame.addEventListener('click', event => {
-    if (!event.target.closest('.node, .if-frame')) editor.select(loop.id);
+    if (!editor.ignoreClick && !event.target.closest('.node, .if-frame')) editor.select(loop.id);
   });
   return frame;
 }
@@ -291,10 +307,10 @@ function renderIf(editor, step) {
     onkeydown: event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        editor.select(step.id);
+        pick(editor, step.id, event);
       }
     },
-  }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { text: conditionText(step), title: conditionText(step) }));
+  }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { title: conditionText(step) }, conditionNodes(step)));
   const branch = (key, label) => el('div.branch', { 'data-branch': key },
     el('div.branch-label', { text: label }),
     renderLane(editor, step[key] || [], `if:${step.id}:${key}`, t('Drop blocks here.')));
@@ -303,9 +319,16 @@ function renderIf(editor, step) {
   head.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, frame));
   frame.addEventListener('click', event => {
     event.stopPropagation();
-    if (!event.target.closest('.node')) editor.select(step.id);
+    // A click on the condition was already taken when it was pressed.
+    if (!editor.ignoreClick && !event.target.closest('.node, .if-head')) pick(editor, step.id, event);
   });
   return frame;
+}
+
+// A click selects the block; with Shift or Ctrl held it adds the block to the selection or takes it out.
+function pick(editor, id, event) {
+  if (event.shiftKey || event.ctrlKey || event.metaKey) editor.toggleSelect(id);
+  else editor.select(id);
 }
 
 function renderSelectionBar(editor) {
@@ -344,7 +367,7 @@ function renderRunDiagram(flow, stateOf, branchOf, vertical) {
       const branch = (key, label) => el('div.' + ['branch', taken === key ? 'taken' : '', taken && taken !== key ? 'skipped' : ''].filter(Boolean).join('.'), { 'data-branch': key },
         el('div.branch-label', { text: label }), lane(step[key] || []));
       return el('div.item.block', null, el('div.' + ['if-frame', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-if': step.id },
-        el('div.if-head', { 'data-step': step.id }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { text: conditionText(step) })),
+        el('div.if-head', { 'data-step': step.id }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { title: conditionText(step) }, conditionNodes(step))),
         el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No')))));
     }
     return item(step, index < steps.length - 1 && !isFrame(steps[index + 1]));
@@ -540,7 +563,7 @@ function startNodeDrag(event, editor, step, node) {
     editor.select(step.id);
     editor.changed();
   };
-  drop.click = () => editor.select(step.id);
+  drop.click = () => pick(editor, step.id, event);
   runDrag(event, STEP_NAMES[step.do], drop, () => node.classList.add('dragging'), () => node.classList.remove('dragging'), dropDepth(step.do));
 }
 
@@ -564,11 +587,15 @@ function startLasso(event, editor) {
   const up = upEvent => {
     document.removeEventListener('pointermove', move);
     document.removeEventListener('pointerup', up);
+    const adding = event.shiftKey || event.ctrlKey || event.metaKey;
     if (!box) {
-      if (!event.target.closest('.loop-frame, .if-frame')) editor.select(null);
+      if (!adding && !event.target.closest('.loop-frame, .if-frame')) editor.select(null);
       return;
     }
     box.remove();
+    // The click that ends the box is not a click on the loop or the "If" block it was drawn in.
+    editor.ignoreClick = true;
+    setTimeout(() => { editor.ignoreClick = false; }, 0);
     const left = Math.min(startX, upEvent.clientX);
     const right = Math.max(startX, upEvent.clientX);
     const top = Math.min(startY, upEvent.clientY);
@@ -583,7 +610,10 @@ function startLasso(event, editor) {
       const frame = node.classList.contains('if-head') ? null : node.closest('.if-frame');
       return !(frame && frames.has(frame.dataset.if));
     }).map(node => node.dataset.step);
-    editor.selectMany(chosen);
+    // With Shift or Ctrl held the box adds to what is already selected, as long as that is not the loop.
+    const loop = findLoop(editor.flow);
+    const kept = adding ? [...editor.selection].filter(id => !(loop && id === loop.id)) : [];
+    editor.selectMany([...new Set([...kept, ...chosen])]);
   };
   document.addEventListener('pointermove', move);
   document.addEventListener('pointerup', up);

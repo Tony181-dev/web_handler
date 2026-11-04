@@ -85,11 +85,13 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
   - `Check on live page` cho khối trong nhánh chạy các khối trước khung `If` rồi các khối trước nó trong nhánh đó, không xét điều kiện. Khối `If` nằm phía trước thì được chạy thật, hỏi trang và đi đúng nhánh.
   - Màn hình chạy: nhánh đã chạy có viền xanh, nhánh kia mờ đi.
   - Kéo cả khung bằng dòng điều kiện. `Duplicate` chép cả nhánh với mã khối mới. `Delete block` xóa cả nhánh, `Undo` lấy lại được.
-- View và Zoom ở góc trên bên phải vùng sơ đồ: `⇄ Horizontal` / `⇅ Vertical` (dọc thì khối xếp từ trên xuống, mũi tên chỉ xuống, hai nhánh của `If` nằm cạnh nhau), `−` / `+` từ 50% đến 200% (bước 10%, hoặc Ctrl + lăn chuột trên sơ đồ), `⟲ Reset` về 100% và cuộn về đầu. Kéo thả và khoanh chọn vẫn đúng khi zoom. Trình duyệt nhớ lựa chọn (`canvas.view`, `canvas.zoom`), dùng chung cho mọi quy trình. Màn hình chạy theo view đã chọn.
+  - Dòng điều kiện đóng khung phần tử và giá trị so sánh (`.cond-part`), chữ nối như "equals"/"bằng" để trơn. Câu được dịch với placeholder còn nguyên rồi tách ra (`conditionPieces` trong `canvas.js`), nên thứ tự từ theo đúng từng ngôn ngữ.
+- View và Zoom ở góc trên bên phải vùng sơ đồ: `⇄ Horizontal` / `⇅ Vertical` (dọc thì khối xếp từ trên xuống, mũi tên chỉ xuống, hai nhánh của `If` nằm cạnh nhau), `−` / `+` từ 50% đến 200% (bước 10%), `⟲ Reset` về 100% và cuộn về đầu. Từ 2026-11-05 lăn chuột trên sơ đồ là zoom, giữ chỗ dưới con trỏ đứng yên (khi còn chỗ cuộn); mỗi nấc chuột một bước, touchpad cộng dồn 50px mới đủ một bước. Ctrl + lăn chuột cũng zoom. Shift + lăn chuột cuộn lên xuống, vuốt ngang trên touchpad vẫn cuộn ngang, nút giữa chuột vẫn cuộn tự do của Chrome. View dọc: mọi khối nằm trên đường giữa như khung `Loop`/`If`; ô biến treo bên phải khối nên chính khối mới nằm giữa. Kéo thả và khoanh chọn vẫn đúng khi zoom. Trình duyệt nhớ lựa chọn (`canvas.view`, `canvas.zoom`), dùng chung cho mọi quy trình. Màn hình chạy theo view đã chọn.
 - `Login`: bắt buộc điền `Account` và `Password`. `Account` chỉ gõ trực tiếp, lấy từ Excel hoặc Biến, không được là bí mật vì nó hiện trên trang. `Password` gõ tay (mặc định ẩn) hoặc chọn từ `Secrets`. Mật khẩu gõ tay tự lưu vào Credential Manager với tên `password_<mã quy trình>_<mã khối>`, không nằm trong file quy trình và không vào lịch sử `Undo`. Khối tự tìm ô tài khoản, ô mật khẩu và nút gửi, và báo lỗi nếu sau khi gửi form vẫn còn. Trang không có form thì coi như đã đăng nhập sẵn và ghi cảnh báo vào log. Chưa hỗ trợ form trong iframe và kiểu đăng nhập hai bước (nhập tài khoản rồi sang trang khác mới nhập mật khẩu), các trường hợp đó dùng khối `Fill` và `Click`.
 - `Wait`: tạm ngưng theo số giây, mặc định 3, nhận số lẻ. Lúc chạy, khối và dòng trạng thái đếm ngược. Bấm `Stop after this row` trong lúc chờ thì vẫn chờ hết và làm xong hàng đó. `Stop` trong `Check on live page` thì dừng ngay.
 - Rê chuột hoặc chuyển focus vào một khối, `Record` hay `Clear all` ở cột trái thì hiện popup giải thích. Bấm hoặc rời chuột là popup tắt.
 - Mọi khối hành động, trừ `Wait` và `Loop`, có mục `Delay` thu gọn ở cuối panel, mặc định trống. Điền số giây thì khối chờ sau khi làm xong rồi mới sang khối tiếp theo, có đếm ngược. Khối lỗi thì không chờ. Mục này tự mở khi đã có giá trị.
+- Shift+Click (hoặc Ctrl+Click, Shift+Enter) thêm khối vào vùng chọn hoặc bỏ ra; Shift khi khoanh chuột thì cộng thêm vào vùng chọn cũ. `Loop` chỉ được chọn một mình. Khoanh chuột bắt đầu bên trong vùng lặp hay khung `If` không còn bị cú click cuối chọn nhầm cả khung (`editor.ignoreClick`).
 - Chọn từ 1 khối trở lên thì hiện thanh có `Create loop`, `Duplicate`, `Delete`. Thanh luôn có sẵn chỗ nên các khối không bị đẩy. `Duplicate` đặt bản sao ngay sau khối gốc, giữ thứ tự khi chọn nhiều khối, và ở nguyên trong vùng lặp nếu khối gốc ở đó.
 - `Undo`, `Redo` bên trái `Run once`, hoặc `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` khi không gõ trong ô nhập. Lịch sử tối đa 200 bước, chỉ giữ trong lúc quy trình đang mở, mất khi rời quy trình hoặc tải lại trang.
 - `Read OCR`: đọc chữ trong ảnh trên trang bằng `ddddocr`, chạy trên máy. Ảnh chụp của phần tử chỉ nằm trong bộ nhớ, không tạo file nên không cần dọn. Kết quả lưu vào biến hoặc cột Excel, có tùy chọn chữ hoa, chữ thường. Thử trên ảnh captcha giả lập: `ddddocr` 117/120, RapidOCR 59/120, OCR của Windows 6/32. Chưa thử trên captcha thật. Chỉ hợp với chữ ngắn.
@@ -119,7 +121,7 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
 - Trường hợp đã test: cột A chứa link, cột B chứa nội dung, mỗi hàng mở đúng link và điền đúng nội dung của hàng đó.
 
 ### Excel
-- Chọn file, sheet, hàng bắt đầu và hàng kết thúc ở thanh dưới.
+- Nút `Select Excel` và tên file nằm ở góc dưới bên trái vùng sơ đồ, ngang hàng nút `Log` ở góc phải (từ 2026-11-05, trước đó ở thanh dưới). Sheet, hàng bắt đầu và hàng kết thúc vẫn ở thanh dưới. Vùng lặp chạy theo số lần thì góc này ẩn.
 - Ô "đến" để trống: hiện `Chạy tới hết cột A (gặp ô trống)` và dừng ở ô trống đầu tiên của cột đó.
   - Cột dừng là cột đầu tiên mà các khối trong vùng lặp dùng. Nếu không khối nào dùng cột thì lấy cột bắt buộc đầu tiên.
 - Ô "đến" có điền: hiện `tối đa N lần`, chạy đúng dải đó.
@@ -260,6 +262,7 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
 - Bỏ `Build.bat`, gộp việc đóng gói vào `Install.bat`.
 - Vá các file cài đặt: Install.bat không cài đè lên thư mục lạ, đường dẫn có `&` không bị chạy thành lệnh, công cụ Windows gọi bằng đường dẫn đầy đủ, không tìm chương trình trong thư mục hiện tại, Python không nạp thư viện cá nhân, thư viện khóa theo SHA-256 (`tools/requirements.lock`).
 - Thêm `Uninstall.bat` và shortcut `Uninstall Web Handler`, `main.py --forget-secrets`. Bộ gỡ exe xóa luôn bí mật khi chọn xóa dữ liệu. Build dọn sạch `dist` trước khi đặt bản mới vào (2026-11-04).
+- Sơ đồ (2026-11-05): `Select Excel` và tên file xuống góc dưới trái ngang nút `Log`; lăn chuột để zoom; Shift+Click chọn nhiều khối; view dọc căn giữa mọi khối; điều kiện `If` đóng khung phần tử và giá trị.
 
 ## File chính
 

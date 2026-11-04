@@ -208,8 +208,8 @@ function renderProperties(editor) {
       el('ol', { style: 'margin:0;padding-left:18px;line-height:1.7' },
         el('li', { text: t('Drag blocks from the left, or click Record.') }),
         el('li', { text: t('Select a block and paste the HTML of the element here.') }),
-        el('li', { text: t('Drag a box around the blocks to repeat, then click Create loop.') }),
-        el('li', { text: t('Click Select Excel, choose the rows in the bar below, then click Run.') })));
+        el('li', { text: t('Drag a box around the blocks to repeat, or Shift+click them, then click Create loop.') }),
+        el('li', { text: t('Click Select Excel at the bottom left, choose the rows in the bar below, then click Run.') })));
     return;
   }
   panel.append(el('div.row', { style: 'margin-bottom:12px' },
