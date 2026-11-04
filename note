@@ -9,7 +9,7 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 | Hạng mục | Tình trạng |
 |---|---|
 | App, bộ cài exe và file zip 0.1.14 | Xong |
-| Test tự động của app | 333/333 đạt (`test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 39, `test_ui` 128, `test_package` 12), ngày 2026-11-04. Riêng `test_integration` và `test_ui` chạy lần cuối ngày 2026-11-03 |
+| Test tự động của app | Ngày 2026-11-05: `test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 39, `test_package` 12 đạt; `test_ui` 136/137, chỉ `test_setup_screen` lỗi (mục Recording actions đứng ở Not tried quá 120 giây), lỗi cả khi bỏ thay đổi trong ngày nên chưa rõ nguyên nhân |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
 | Bộ cài có giao diện | **Chưa bấm thử bằng tay**, gồm các trang của trình cài và hộp hỏi xóa dữ liệu khi gỡ |
@@ -263,6 +263,7 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
 - Vá các file cài đặt: Install.bat không cài đè lên thư mục lạ, đường dẫn có `&` không bị chạy thành lệnh, công cụ Windows gọi bằng đường dẫn đầy đủ, không tìm chương trình trong thư mục hiện tại, Python không nạp thư viện cá nhân, thư viện khóa theo SHA-256 (`tools/requirements.lock`).
 - Thêm `Uninstall.bat` và shortcut `Uninstall Web Handler`, `main.py --forget-secrets`. Bộ gỡ exe xóa luôn bí mật khi chọn xóa dữ liệu. Build dọn sạch `dist` trước khi đặt bản mới vào (2026-11-04).
 - Sơ đồ (2026-11-05): `Select Excel` và tên file xuống góc dưới trái ngang nút `Log`; lăn chuột để zoom; Shift+Click chọn nhiều khối; view dọc căn giữa mọi khối; điều kiện `If` đóng khung phần tử và giá trị.
+- Sơ đồ (2026-11-05, lần 2): mũi tên đi vào và ra khỏi khung `If` và `Loop` như khối thường, và từ điều kiện vào khối đầu của mỗi nhánh có khối. Khung `If` không còn chiếm cả hàng như `Loop` mà vừa với nội dung, đứng chung hàng với các khối khác (`.item.block.if-item`); nhánh dùng grid để mũi tên và khối nằm cùng dòng. Dấu `!` của khối `Read value`/`Read OCR` thiếu thông tin nằm ở góc ngoài của ô Biến (`.node-pair.invalid`), không bị ô Biến che. Ô Biến rộng cố định `--node-height` (56px); view dọc chừa khoảng trống bằng đó bên trái để khối nằm giữa.
 
 ## File chính
 

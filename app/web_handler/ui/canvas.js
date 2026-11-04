@@ -37,11 +37,6 @@ function containsStep(steps, id) {
   return flattenSteps(steps).some(step => step.id === id);
 }
 
-// Blocks drawn as a frame around other blocks, on a row of their own.
-function isFrame(step) {
-  return step.do === 'loop' || step.do === 'if';
-}
-
 // Same rule as stop_column() in flow.py: the first column the loop's blocks use decides where rows end.
 function stopColumn(flow) {
   const loop = findLoop(flow);
@@ -223,10 +218,12 @@ function renderCanvas(editor) {
 
 function renderLane(editor, steps, name, emptyText) {
   const lane = el('div.lane', { 'data-lane': name });
+  // Every block points to the next one, a loop or an "If" block included, so the order reads along the arrows.
   steps.forEach((step, index) => {
-    if (step.do === 'loop') lane.append(el('div.item.block', { 'data-index': index }, renderLoop(editor, step)));
-    else if (step.do === 'if') lane.append(el('div.item.block', { 'data-index': index }, renderIf(editor, step)));
-    else lane.append(renderItem(editor, step, index, index < steps.length - 1 && !isFrame(steps[index + 1])));
+    const withArrow = index < steps.length - 1;
+    if (step.do === 'loop') lane.append(el('div.item.block', { 'data-index': index }, renderLoop(editor, step), withArrow ? arrowNode() : null));
+    else if (step.do === 'if') lane.append(el('div.item.block.if-item', { 'data-index': index }, renderIf(editor, step), withArrow ? arrowNode() : null));
+    else lane.append(renderItem(editor, step, index, withArrow));
   });
   if (!steps.length && emptyText) lane.append(el('div.loop-empty', { text: emptyText }));
   return lane;
@@ -258,8 +255,9 @@ function renderItem(editor, step, index, withArrow) {
   node.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, node.parentElement.classList.contains('node-pair') ? node.parentElement : node));
   const chip = variableChip(step);
   if (!chip) return el('div.item', { 'data-index': index }, node, withArrow ? arrowNode() : null);
-  // The block and its variable are one piece: dragging either moves both.
-  const pair = el('div.node-pair', null, node, chip);
+  // The block and its variable are one piece: dragging either moves both. A missing detail is marked
+  // on the outer corner of the piece, where the variable does not cover it.
+  const pair = el('div.node-pair' + (stepIsIncomplete(step) ? '.invalid' : ''), null, node, chip);
   chip.addEventListener('pointerdown', event => startNodeDrag(event, editor, step, pair));
   return el('div.item', { 'data-index': index }, pair, withArrow ? arrowNode() : null);
 }
@@ -311,8 +309,10 @@ function renderIf(editor, step) {
       }
     },
   }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { title: conditionText(step) }, conditionNodes(step)));
+  // An arrow leads from the condition into each branch that has blocks.
   const branch = (key, label) => el('div.branch', { 'data-branch': key },
     el('div.branch-label', { text: label }),
+    (step[key] || []).length ? arrowNode() : null,
     renderLane(editor, step[key] || [], `if:${step.id}:${key}`, t('Drop blocks here.')));
   const frame = el('div.' + classes.join('.'), { 'data-if': step.id }, head,
     el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No'))));
@@ -357,20 +357,21 @@ function renderRunDiagram(flow, stateOf, branchOf, vertical) {
     return el('div.item', null, chip ? el('div.node-pair', null, node, chip) : node, withArrow ? arrowNode() : null);
   };
   const lane = steps => el('div.lane', null, steps.map((step, index) => {
+    const withArrow = index < steps.length - 1;
     if (step.do === 'loop') {
       const description = step.source === 'count' ? t('{count} time(s)', { count: step.count || 1 }) : t('each Excel row');
       return el('div.item.block', null, el('div.loop-frame.readonly', null,
-        el('div.loop-head', { text: `↻ ${STEP_NAMES.loop} · ${description}` }), lane(step.steps)));
+        el('div.loop-head', { text: `↻ ${STEP_NAMES.loop} · ${description}` }), lane(step.steps)), withArrow ? arrowNode() : null);
     }
     if (step.do === 'if') {
       const taken = branchOf ? branchOf(step.id) : null;
       const branch = (key, label) => el('div.' + ['branch', taken === key ? 'taken' : '', taken && taken !== key ? 'skipped' : ''].filter(Boolean).join('.'), { 'data-branch': key },
-        el('div.branch-label', { text: label }), lane(step[key] || []));
-      return el('div.item.block', null, el('div.' + ['if-frame', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-if': step.id },
+        el('div.branch-label', { text: label }), (step[key] || []).length ? arrowNode() : null, lane(step[key] || []));
+      return el('div.item.block.if-item', null, el('div.' + ['if-frame', 'readonly', stateOf(step.id)].filter(Boolean).join('.'), { 'data-if': step.id },
         el('div.if-head', { 'data-step': step.id }, el('b', { text: `◇ ${STEP_NAMES.if}` }), el('span', { title: conditionText(step) }, conditionNodes(step))),
-        el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No')))));
+        el('div.branches', null, branch('then', t('✓ Yes')), branch('else', t('✗ No')))), withArrow ? arrowNode() : null);
     }
-    return item(step, index < steps.length - 1 && !isFrame(steps[index + 1]));
+    return item(step, withArrow);
   }));
   return el('div.run-diagram' + (vertical ? '.vertical' : ''), null, lane(flow.steps));
 }

@@ -1,5 +1,7 @@
 :root {
   color-scheme: light dark;
+  /* A block is always this tall, and the variable square beside it this wide. */
+  --node-height: 56px;
   --bg: #f4f5f8;
   --surface: #ffffff;
   --surface-2: #f0f1f5;
@@ -161,10 +163,10 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
 .tool { padding: 7px 9px; margin-bottom: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; cursor: grab; user-select: none; touch-action: none; font-weight: 500; }
 .tool:hover { border-color: var(--accent); }
-.node-pair { display: flex; align-items: stretch; }
+.node-pair { position: relative; display: flex; align-items: stretch; }
 .node-pair.dragging { opacity: .35; }
 .node-pair > .node { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.var-chip { box-sizing: border-box; align-self: stretch; aspect-ratio: 1 / 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px; margin-left: -1px; overflow: hidden; text-align: center; border: 1.5px dashed var(--var-border); border-radius: 0 9px 9px 0; background: var(--var-soft); color: var(--var-text); font-size: 10.5px; line-height: 1.2; cursor: grab; touch-action: none; }
+.var-chip { box-sizing: border-box; align-self: stretch; width: var(--node-height); flex: none; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px; margin-left: -1px; overflow: hidden; text-align: center; border: 1.5px dashed var(--var-border); border-radius: 0 9px 9px 0; background: var(--var-soft); color: var(--var-text); font-size: 10.5px; line-height: 1.2; cursor: grab; touch-action: none; }
 .var-chip b { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
 .var-chip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .tool[data-kind=loop] { border: 2px dashed var(--loop); background: var(--loop-soft); color: var(--loop-text); font-weight: 600; }
@@ -175,6 +177,8 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .lane { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 0; min-height: 66px; }
 .item { display: flex; align-items: center; }
 .item.block { flex: 0 0 100%; margin: 6px 0; }
+/* An "If" block is as big as what it holds and stands in line with the other blocks; only the loop takes a whole row. */
+.item.block.if-item { flex: 0 1 auto; min-width: 0; }
 .arrow { width: 22px; flex: none; text-align: center; color: var(--muted); font-weight: 700; user-select: none; }
 .node {
   width: 138px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px;
@@ -184,7 +188,9 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .node span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
 .node.selected { border: 2px solid var(--accent); padding: 7px 9px; background: var(--accent-soft); }
 .node.multi { border: 2px solid var(--loop); padding: 7px 9px; }
-.node.invalid::after { content: "!"; position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bad); color: #fff; font-size: 12px; font-weight: 700; }
+.node.invalid::after, .node-pair.invalid::after { content: "!"; position: absolute; z-index: 1; top: -7px; right: -7px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bad); color: #fff; font-size: 12px; font-weight: 700; }
+/* Beside a variable the mark goes on the outer corner of the pair, not under the variable. */
+.node-pair > .node.invalid::after { content: none; }
 .node.dragging { opacity: .35; }
 /* A small crossed-out eye: what this block fills in is hidden on screen. */
 .node.concealed b { padding-right: 14px; }
@@ -205,7 +211,7 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .loop-empty { color: var(--loop-text); opacity: .8; padding: 14px; }
 /* An "If" block: the condition, then a Yes and a No branch. Stacked in the horizontal view, side by side in the vertical one. */
 .tool[data-kind=if] { border: 2px dashed var(--if); background: var(--if-soft); color: var(--if-text); font-weight: 600; }
-.if-frame { position: relative; flex: 1; min-width: 0; padding: 8px 10px 10px; border: 2px dashed var(--if); border-radius: 12px; background: var(--if-soft); cursor: pointer; }
+.if-frame { position: relative; flex: 0 1 auto; min-width: 0; padding: 8px 10px 10px; border: 2px dashed var(--if); border-radius: 12px; background: var(--if-soft); cursor: pointer; }
 .if-frame.selected { border-style: solid; }
 .if-frame.multi { border-style: solid; border-color: var(--loop); }
 .if-frame.lit, .if-frame.running { border-style: solid; border-color: var(--ok); }
@@ -219,8 +225,12 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 /* What the condition compares, boxed, so the words between stand apart from it. */
 .cond-part { padding: 0 5px; border: 1px solid var(--if); border-radius: 5px; background: var(--surface); color: var(--text); font-weight: 600; }
 .branches { display: flex; flex-direction: column; gap: 8px; }
-.branch { min-width: 0; padding: 6px 8px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
-.branch-label { margin-bottom: 4px; font-size: 12px; font-weight: 700; }
+/* The branch name, then an arrow from the condition into the branch's first block. */
+.branch { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; min-width: 0; padding: 6px 8px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.branch-label { grid-column: 1 / -1; margin-bottom: 4px; font-size: 12px; font-weight: 700; }
+/* An empty branch has no arrow, and its lane takes the whole width. */
+.branch-label + .lane { grid-column: 1 / -1; }
+.if-frame .loop-empty { padding: 14px 8px; white-space: nowrap; }
 .branch[data-branch=then] .branch-label { color: var(--ok); }
 .branch[data-branch=else] .branch-label { color: var(--bad); }
 .branch .lane { min-height: 50px; }
@@ -229,14 +239,14 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 /* The vertical view: one block under the next, the arrows pointing down. */
 /* The blocks stand on the middle line, as the loop and the "If" blocks do. */
 .canvas.vertical .lane, .run-diagram.vertical .lane { flex-direction: column; flex-wrap: nowrap; align-items: center; gap: 0; }
-/* The variable hangs on the right of its block, so the block itself, not the pair, is in the middle. */
-.canvas.vertical .node-pair, .run-diagram.vertical .node-pair { position: relative; }
-.canvas.vertical .var-chip, .run-diagram.vertical .var-chip { position: absolute; top: 0; left: calc(100% - 1px); height: 100%; margin-left: 0; }
+/* Room as wide as the variable on the left too, so the block itself, not the pair, is in the middle. */
+.canvas.vertical .node-pair, .run-diagram.vertical .node-pair { padding-left: calc(var(--node-height) - 1px); }
 .canvas.vertical .item, .run-diagram.vertical .item { flex-direction: column; }
 .canvas.vertical .item.block, .run-diagram.vertical .item.block { flex: none; align-self: stretch; }
 .canvas.vertical .arrow, .run-diagram.vertical .arrow { height: 22px; line-height: 22px; transform: rotate(90deg); }
 .canvas.vertical .branches, .run-diagram.vertical .branches { flex-direction: row; align-items: stretch; }
-.canvas.vertical .branch, .run-diagram.vertical .branch { flex: 1; }
+.canvas.vertical .branch, .run-diagram.vertical .branch { flex: 1; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.canvas.vertical .branch > .arrow, .run-diagram.vertical .branch > .arrow { justify-self: center; }
 .canvas-content { min-width: min-content; }
 .canvas-tools { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; top: 8px; right: 16px; z-index: 6; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow); }
 .zoom-level { min-width: 42px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }

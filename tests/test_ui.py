@@ -1691,6 +1691,44 @@ class CanvasViewTests(AppTestCase):
         self.page.keyboard.up("Shift")
         expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
 
+    def test_arrows_lead_into_and_out_of_the_if_block_and_the_loop(self):
+        self.new_flow()
+        self.page.evaluate("""() => {
+            const editor = window.currentEditor;
+            const make = kind => editor.makeStep(kind);
+            const fork = make('if');
+            editor.flow.steps.push(make('goto'), fork, make('click'));
+            fork.then.push(make('fill'));
+            const loop = { id: nextStepId(editor.flow), do: 'loop', source: 'count', count: 2, steps: [] };
+            editor.flow.steps.push(loop);
+            loop.steps.push(make('fill'));
+            editor.flow.steps.push(make('wait'));
+            editor.changed();
+        }""")
+        top = "#canvas [data-lane=top] > .item"
+        expect(self.page.locator(top)).to_have_count(5)
+        # Every block but the last points on, the "If" block and the loop included.
+        expect(self.page.locator(f"{top} > .arrow")).to_have_count(4)
+        expect(self.page.locator(".branch[data-branch=then] > .arrow")).to_have_count(1)
+        expect(self.page.locator(".branch[data-branch=else] > .arrow")).to_have_count(0)
+        # The "If" block fits what it holds and stands in line; the loop takes the whole row.
+        canvas = self.page.locator("#canvas").bounding_box()
+        frame = self.page.locator(".if-frame").bounding_box()
+        first = self.page.locator("#canvas .node").first.bounding_box()
+        self.assertLess(frame["width"], canvas["width"] / 2)
+        self.assertLess(frame["y"], first["y"] + first["height"])
+        self.assertGreater(frame["x"], first["x"] + first["width"])
+        self.assertGreater(self.page.locator(".loop-frame").bounding_box()["width"], canvas["width"] * 0.8)
+        self.shot("arrows_horizontal")
+        self.page.click("#view-toggle")
+        expect(self.page.locator(f"{top} > .arrow")).to_have_count(4)
+        middle = lambda box: box["x"] + box["width"] / 2
+        arrows = self.page.locator(f"{top} > .arrow")
+        line = middle(self.page.locator("#canvas .node").first.bounding_box())
+        for index in range(4):
+            self.assertAlmostEqual(middle(arrows.nth(index).bounding_box()), line, delta=2)
+        self.shot("arrows_vertical")
+
     def test_vertical_view_puts_every_block_on_the_middle_line(self):
         self.new_flow()
         for kind in ("goto", "read", "if", "click"):
@@ -1917,6 +1955,24 @@ class VariableChipTests(AppTestCase):
         expect(chip).to_have_count(0)
         self.page.select_option("[data-field=read-mode]", "var")
         expect(chip).to_be_visible()
+
+    def test_the_missing_detail_mark_is_not_covered_by_the_variable(self):
+        self.new_flow()
+        self.page.locator(".tool[data-kind=ocr]").click()
+        for view in ("horizontal", "vertical"):
+            pair = self.page.locator("#canvas .node-pair")
+            expect(pair).to_have_class(re.compile("invalid"))
+            self.assertEqual(self.node().evaluate("el => getComputedStyle(el, '::after').content"), "none")
+            self.assertEqual(pair.evaluate("el => getComputedStyle(el, '::after').content"), '"!"')
+            chip = self.chip().bounding_box()
+            # The mark sits on the outer corner of the variable, above everything there.
+            hit = self.page.evaluate("([x, y]) => document.elementFromPoint(x, y).className", [chip["x"] + chip["width"] + 2, chip["y"] - 2])
+            self.assertIn("node-pair", hit, view)
+            self.shot(f"invalid_mark_{view}")
+            self.page.click("#view-toggle")
+        self.page.locator("[data-field=save_to_var]").fill("ma")
+        self.page.locator("#target-selector").fill("#captcha")
+        expect(self.page.locator("#canvas .node-pair")).not_to_have_class(re.compile("invalid"))
 
     def test_ocr_block_gets_the_same_square_and_other_blocks_none(self):
         self.new_flow()
