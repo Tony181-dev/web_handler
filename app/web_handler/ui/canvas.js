@@ -4,6 +4,8 @@
 // `editor` provides: flow, selection (Set of ids), select(), changed(), addStep(), issuesByStep.
 
 const DRAG_THRESHOLD_PX = 5;
+// How far an arrow key moves the view.
+const PAN_KEY_STEP_PX = 60;
 
 // Where a whole value comes from: ['excel', 'C'], ['secret', 'name'], ['variable', 'name'] or ['text'].
 function sourceOf(value) {
@@ -568,9 +570,70 @@ function startNodeDrag(event, editor, step, node) {
   runDrag(event, STEP_NAMES[step.do], drop, () => node.classList.add('dragging'), () => node.classList.remove('dragging'), dropDepth(step.do));
 }
 
-// Drawing a box over blocks selects them, ready to become the loop.
+// A press on an empty spot of the canvas: dragging moves the view; with Shift held it draws a box
+// that selects blocks, and with Ctrl held a box that adds them. The middle button always moves the view.
+function startCanvasPointer(event, editor) {
+  if (event.target.closest('.node, .var-chip, button, input, select, .selection-bar, .loop-head, .if-head')) return;
+  if (event.button === 1 || (event.button === 0 && !(event.shiftKey || event.ctrlKey || event.metaKey))) startPan(event, editor);
+  else if (event.button === 0) startLasso(event, editor);
+}
+
+// Dragging an empty spot moves the view, as if the diagram were a sheet of paper pulled along.
+function startPan(event, editor) {
+  event.preventDefault();
+  const canvas = editor.canvasNode;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startLeft = canvas.scrollLeft;
+  const startTop = canvas.scrollTop;
+  let moved = false;
+  const move = moveEvent => {
+    if (!moved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) return;
+    if (!moved) {
+      moved = true;
+      canvas.classList.add('panning');
+    }
+    canvas.scrollLeft = startLeft - (moveEvent.clientX - startX);
+    canvas.scrollTop = startTop - (moveEvent.clientY - startY);
+  };
+  const up = upEvent => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    canvas.classList.remove('panning');
+    if (moved) {
+      // The press that ends the move is not a click on the loop or the "If" block under the pointer.
+      editor.ignoreClick = true;
+      setTimeout(() => { editor.ignoreClick = false; }, 0);
+      return;
+    }
+    // A plain click on an empty spot clears the selection; a click in a loop or an "If" block selects it.
+    if (event.button === 0 && upEvent.type === 'pointerup' && !event.target.closest('.loop-frame, .if-frame')) editor.select(null);
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+// Moves the view by a step for an arrow key.
+function panByKey(editor, key) {
+  const step = PAN_KEY_STEP_PX;
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  const [left, top] = moves[key];
+  editor.canvasNode.scrollBy(left, top);
+}
+
+// Every block, ready for Delete or Duplicate. A block inside an "If" block comes with it, and the
+// loop is not taken itself, only what it holds, as the loop is only ever selected alone.
+function allBlockIds(flow) {
+  return flow.steps.flatMap(step => (step.do === 'loop' ? step.steps : [step])).map(step => step.id);
+}
+
+// Drawing a box over blocks selects them, ready to become the loop: Shift + drag chooses just
+// those, Ctrl + drag adds them to what is already selected.
 function startLasso(event, editor) {
-  if (event.button !== 0 || event.target.closest('.node, button, .selection-bar, .loop-head, .if-head')) return;
+  // Shift + press would otherwise mark text on the page.
+  event.preventDefault();
   const startX = event.clientX;
   const startY = event.clientY;
   let box = null;
@@ -588,11 +651,8 @@ function startLasso(event, editor) {
   const up = upEvent => {
     document.removeEventListener('pointermove', move);
     document.removeEventListener('pointerup', up);
-    const adding = event.shiftKey || event.ctrlKey || event.metaKey;
-    if (!box) {
-      if (!adding && !event.target.closest('.loop-frame, .if-frame')) editor.select(null);
-      return;
-    }
+    // A click with Shift or Ctrl held and no box keeps the selection as it is.
+    if (!box) return;
     box.remove();
     // The click that ends the box is not a click on the loop or the "If" block it was drawn in.
     editor.ignoreClick = true;
@@ -611,8 +671,9 @@ function startLasso(event, editor) {
       const frame = node.classList.contains('if-head') ? null : node.closest('.if-frame');
       return !(frame && frames.has(frame.dataset.if));
     }).map(node => node.dataset.step);
-    // With Shift or Ctrl held the box adds to what is already selected, as long as that is not the loop.
+    // With Ctrl held the box adds to what is already selected, as long as that is not the loop.
     const loop = findLoop(editor.flow);
+    const adding = event.ctrlKey || event.metaKey;
     const kept = adding ? [...editor.selection].filter(id => !(loop && id === loop.id)) : [];
     editor.selectMany([...new Set([...kept, ...chosen])]);
   };

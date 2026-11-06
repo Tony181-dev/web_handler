@@ -134,6 +134,12 @@ class FlowEditor {
     this.render();
   }
 
+  selectAll() {
+    const ids = allBlockIds(this.flow);
+    if (ids.length === 1) this.select(ids[0]);
+    else if (ids.length) this.selectMany(ids);
+  }
+
   // Shift+click: the block joins the selection, or leaves it if it was in. The loop is only ever selected alone.
   toggleSelect(id) {
     const step = findStep(this.flow, id);
@@ -300,6 +306,19 @@ class FlowEditor {
       this.moveInHistory(key === 'y' || event.shiftKey ? 1 : -1);
       return;
     }
+    // Ctrl+A takes every block rather than marking all the text on the page.
+    if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.altKey) {
+      event.preventDefault();
+      this.selectAll();
+      return;
+    }
+    // The arrow keys move the view, unless a control that uses them has the focus.
+    if (event.key.startsWith('Arrow') && !(event.ctrlKey || event.metaKey || event.altKey)
+        && !(document.activeElement && document.activeElement.closest('.inspector, .panel-resize, [role=tablist], .modal'))) {
+      event.preventDefault();
+      panByKey(this, event.key);
+      return;
+    }
     if (event.key !== 'Delete') return;
     if (this.selection.size) {
       const only = this.selection.size === 1 ? findStep(this.flow, [...this.selection][0]) : null;
@@ -380,14 +399,16 @@ class FlowEditor {
     const bar = this.runbarNode;
     const loop = findLoop(this.flow);
     const parts = [];
-    // The file itself is chosen in the canvas's bottom left corner, level with the Log button.
-    const corner = [];
+    // The file itself is chosen in the canvas's bottom left corner, level with the Log button. It stays
+    // there for a loop counted by hand too, as choosing a file is how such a loop turns to the Excel rows.
+    const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : t('No Excel file selected');
+    const nameNode = el('span.file-name' + (this.excelPath ? '' : '.empty'), { id: 'excel-name', text: name });
+    const corner = [
+      el('button.btn', { id: 'pick-excel', text: t('Select Excel'), onclick: () => this.pickExcel() }),
+      this.excelPath ? attachHelp(nameNode, this.excelPath) : nameNode,
+    ];
     if (!loop || loop.source === 'excel') {
       const settings = this.flow.excel || {};
-      const name = this.excelPath ? this.excelPath.split(/[\\/]/).pop() : t('No Excel file selected');
-      corner.push(
-        el('button.btn', { id: 'pick-excel', text: t('Select Excel'), onclick: () => this.pickExcel() }),
-        this.excelPath ? attachHelp(el('span.file-name', { id: 'excel-name', text: name }), this.excelPath) : el('span.file-name', { id: 'excel-name', text: name }));
       if (this.sheets.length) {
         const sheetSelect = el('select', {
           id: 'excel-sheet', 'aria-label': 'Sheet',
@@ -447,7 +468,6 @@ class FlowEditor {
       el('button.btn.primary', { id: 'run-full', text: t('▶ Run'), onclick: () => startRunFlow(this, 'full') }));
     bar.replaceChildren(...parts);
     this.excelCornerNode.replaceChildren(...corner);
-    this.excelCornerNode.hidden = !corner.length;
     this.showRowCount();
   }
 
@@ -544,7 +564,7 @@ class FlowEditor {
     try {
       const { path } = await api('POST', '/api/dialog', {}, { timeout: 600000 });
       if (path) {
-        await this.loadExcel(path);
+        await this.useExcel(path);
         return;
       }
     } catch (error) { showError(error); }
@@ -553,7 +573,19 @@ class FlowEditor {
 
   async askExcelPath() {
     const path = await promptBox(t('Excel file path'), t('Paste the full path'), this.excelPath, t('The file dialog was closed or could not open. You can paste the path here.'));
-    if (path) await this.loadExcel(path.replace(/^"|"$/g, ''));
+    if (path) await this.useExcel(path.replace(/^"|"$/g, ''));
+  }
+
+  // A file chosen for a loop counted by hand turns the loop to the file's rows, which is what a file is for.
+  async useExcel(path) {
+    const loop = findLoop(this.flow);
+    if (loop && loop.source === 'count') {
+      loop.source = 'excel';
+      this.ensureExcelSettings();
+      this.changed();
+      toast(t('The loop now runs once for each Excel row.'));
+    }
+    await this.loadExcel(path);
   }
 }
 
@@ -632,7 +664,14 @@ async function renderBuilder(id) {
   setTopbarTitle(nameInput);
 
   editor.canvasNode = el('div.canvas', { id: 'canvas' });
-  editor.canvasNode.addEventListener('pointerdown', event => startLasso(event, editor));
+  // Any press in the diagram ends text marked on the page, even one a block takes for itself.
+  editor.canvasNode.addEventListener('pointerdown', () => {
+    const marked = window.getSelection();
+    if (marked && !marked.isCollapsed) marked.removeAllRanges();
+  }, true);
+  editor.canvasNode.addEventListener('pointerdown', event => startCanvasPointer(event, editor));
+  // The middle button moves the view rather than starting the browser's own scrolling.
+  editor.canvasNode.addEventListener('mousedown', event => { if (event.button === 1) event.preventDefault(); });
   // Not passive, so that the wheel zooms the diagram rather than scrolling it or zooming the whole app.
   editor.canvasNode.addEventListener('wheel', event => editor.onWheel(event), { passive: false });
   editor.canvasToolsNode = el('div.canvas-tools', { id: 'canvas-tools' });

@@ -171,7 +171,7 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .var-chip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .tool[data-kind=loop] { border: 2px dashed var(--loop); background: var(--loop-soft); color: var(--loop-text); font-weight: 600; }
 .canvas {
-  grid-row: 1; position: relative; overflow: auto; padding: 18px 18px 58px; min-width: 0; user-select: none;
+  grid-row: 1; position: relative; overflow: auto; padding: 18px 18px 58px; min-width: 0; user-select: none; cursor: grab;
   background-color: var(--bg); background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 16px 16px;
 }
 .lane { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 0; min-height: 66px; }
@@ -271,8 +271,12 @@ label.field-label { display: block; margin-bottom: 4px; font-weight: 600; font-s
 .canvas-log { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; right: 8px; bottom: 8px; z-index: 6; }
 /* The Excel file, in the opposite corner on the same line as the Log button. */
 .canvas-excel { position: absolute; grid-column: 2 / 3; grid-row: 1 / 2; left: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 110px); }
-.canvas-excel[hidden] { display: none; }
-.canvas-excel .file-name { min-width: 0; padding: 4px 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: var(--shadow); }
+/* Moving the view: the hand closes while the diagram is pulled along. */
+.canvas.panning, .canvas.panning * { cursor: grabbing !important; }
+/* The file name is a label of what is open, not a second button: flat, with a sheet icon. */
+.canvas-excel .file-name { min-width: 0; position: relative; padding: 5px 10px 5px 26px; background: var(--ok-soft); color: var(--ok); border: 1px solid transparent; border-left: 3px solid var(--ok); border-radius: 4px; font-weight: 600; cursor: default; }
+.canvas-excel .file-name::before { content: ""; position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 10px; height: 12px; border: 1.5px solid currentColor; border-radius: 2px; background: linear-gradient(currentColor, currentColor) center 4px / 6px 1.5px no-repeat, linear-gradient(currentColor, currentColor) center 7px / 6px 1.5px no-repeat; }
+.canvas-excel .file-name.empty { background: var(--surface); color: var(--muted); border: 1px dashed var(--border); border-left: 3px dashed var(--border); font-weight: 500; font-style: italic; }
 .panel-resize { position: absolute; grid-row: 1 / 2; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; touch-action: none; }
 #inspector-resize { grid-column: 3 / 4; left: -3px; }
 #palette-resize { grid-column: 1 / 2; right: -3px; }

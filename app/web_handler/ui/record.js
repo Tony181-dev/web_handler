@@ -155,7 +155,7 @@ function showRecordReview(editor, entries, warnings) {
             return step;
           });
           editor.insertSteps(chosen);
-          toast(t('Added {count} step(s). Drag a box around the blocks to repeat to create a loop.', { count: chosen.length }));
+          toast(t('Added {count} step(s). Hold Shift and drag a box around the blocks to repeat to create a loop.', { count: chosen.length }));
         },
       },
     ],

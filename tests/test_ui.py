@@ -104,12 +104,15 @@ class AppTestCase(unittest.TestCase):
         self.page.mouse.up()
 
     def lasso(self, first, last):
+        # A plain drag moves the view; Shift + drag draws the box.
         one = self.page.locator(first).bounding_box()
         two = self.page.locator(last).bounding_box()
         self.page.mouse.move(one["x"] + 4, one["y"] - 6)
+        self.page.keyboard.down("Shift")
         self.page.mouse.down()
         self.page.mouse.move(two["x"] + two["width"] + 4, two["y"] + two["height"] + 6, steps=8)
         self.page.mouse.up()
+        self.page.keyboard.up("Shift")
 
     def saved_flow(self, flow_id=None):
         flow_id = flow_id or self.page.url.rsplit("/", 1)[-1]
@@ -1684,12 +1687,98 @@ class CanvasViewTests(AppTestCase):
         self.lasso("#canvas .node >> nth=1", "#canvas .node >> nth=2")
         inner = self.page.evaluate("findLoop(window.currentEditor.flow).steps.slice(1).map(step => step.id)")
         self.assertEqual(sorted(self.page.evaluate("[...window.currentEditor.selection]")), sorted(inner))
-        # Shift + box adds to it.
+        # A new Shift + box chooses just what it covers; Ctrl + box adds to it.
         self.page.locator("#canvas .node").nth(0).click()
-        self.page.keyboard.down("Shift")
         self.lasso("#canvas .node >> nth=2", "#canvas .node >> nth=2")
-        self.page.keyboard.up("Shift")
+        self.assertEqual(self.page.evaluate("[...window.currentEditor.selection]"), [inner[1]])
+        self.page.locator("#canvas .node").nth(0).click()
+        self.page.keyboard.down("Control")
+        self.lasso("#canvas .node >> nth=2", "#canvas .node >> nth=2")
+        self.page.keyboard.up("Control")
         expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
+
+    def test_dragging_an_empty_spot_moves_the_view(self):
+        self.build()
+        for kind in ("wait", "check", "goto", "fill", "click", "wait", "check", "goto", "fill", "click", "wait", "check"):
+            self.page.locator(f".tool[data-kind={kind}]").click()
+        for _ in range(10):
+            self.page.click("#zoom-in")
+        expect(self.page.locator("#zoom-level")).to_have_text("200%")
+        canvas = self.page.locator("#canvas")
+        # Where the view can go: as far as the diagram reaches, and no further.
+        reach = self.page.evaluate("(() => { const c = document.getElementById('canvas'); return [c.scrollWidth - c.clientWidth, c.scrollHeight - c.clientHeight]; })()")
+        self.assertGreater(reach[1], 200)
+        within = lambda left, top: [max(0, min(reach[0], left)), max(0, min(reach[1], top))]
+        scroll = lambda: self.page.evaluate("[document.getElementById('canvas').scrollLeft, document.getElementById('canvas').scrollTop]")
+        self.page.evaluate("window.currentEditor.select(window.currentEditor.flow.steps[0].id)")
+        self.page.evaluate("document.getElementById('canvas').scrollTo(200, 200)")
+        start = within(200, 200)
+        self.assertEqual(scroll(), start)
+        # An empty spot of the canvas, with room around it for the move.
+        empty_spot = lambda: self.page.evaluate("""() => {
+            const canvas = document.getElementById('canvas');
+            const box = canvas.getBoundingClientRect();
+            for (let y = box.top + 120; y < box.bottom - 120; y += 10) {
+                for (let x = box.left + 120; x < box.right - 40; x += 10) {
+                    const hit = document.elementFromPoint(x, y);
+                    if (hit && canvas.contains(hit) && !hit.closest('.node, .var-chip, .loop-frame, .if-frame, button, .selection-slot')) return [x, y];
+                }
+            }
+            return null;
+        }""")
+        x, y = empty_spot()
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x - 80, y - 50, steps=6)
+        expect(canvas).to_have_class(re.compile("panning"))
+        self.page.mouse.up()
+        self.assertEqual(scroll(), within(start[0] + 80, start[1] + 50))
+        expect(canvas).not_to_have_class(re.compile("panning"))
+        expect(self.page.locator(".lasso")).to_have_count(0)
+        # Moving the view keeps the selection; a plain click on an empty spot clears it.
+        self.assertEqual(len(self.page.evaluate("[...window.currentEditor.selection]")), 1)
+        self.page.mouse.click(*empty_spot())
+        self.assertEqual(self.page.evaluate("[...window.currentEditor.selection]"), [])
+        # The arrow keys move it too.
+        before = scroll()
+        self.page.keyboard.press("ArrowLeft")
+        self.page.keyboard.press("ArrowUp")
+        self.assertEqual(scroll(), within(before[0] - 60, before[1] - 60))
+        before = scroll()
+        self.page.keyboard.press("ArrowRight")
+        self.page.keyboard.press("ArrowRight")
+        self.page.keyboard.press("ArrowDown")
+        self.assertEqual(scroll(), within(before[0] + 120, before[1] + 60))
+        # Not while typing in the side panel.
+        self.page.locator("#canvas .node").nth(0).click()
+        before = scroll()
+        self.page.locator("[data-field=url]").press("ArrowDown")
+        self.assertEqual(scroll(), before)
+        self.page.click("#zoom-reset")
+
+    def test_ctrl_a_selects_every_block_rather_than_the_page_text(self):
+        self.build()
+        self.page.evaluate("window.currentEditor.selectMany(window.currentEditor.flow.steps.slice(1).map(step => step.id))")
+        self.page.click("#make-loop")
+        self.page.mouse.click(5, 300)
+        self.page.keyboard.press("Control+a")
+        ids = self.page.evaluate("allBlockIds(window.currentEditor.flow)")
+        self.assertEqual(sorted(self.page.evaluate("[...window.currentEditor.selection]")), sorted(ids))
+        loop = self.page.evaluate("findLoop(window.currentEditor.flow).id")
+        self.assertNotIn(loop, ids)
+        self.assertEqual(len(ids), self.page.locator("#canvas .node").count())
+        expect(self.page.locator(".selection-bar")).to_contain_text(f"Selected blocks: {len(ids)}")
+        self.assertEqual(self.page.evaluate("String(window.getSelection())"), "")
+        # Text the page did mark goes away with the next press in the diagram, a press on a block included.
+        self.page.evaluate("window.getSelection().selectAllChildren(document.body)")
+        self.page.locator("#canvas .node").nth(0).click()
+        self.assertEqual(self.page.evaluate("String(window.getSelection())"), "")
+        # In a text box Ctrl+A still takes its text.
+        box = self.page.locator("[data-field=url]")
+        box.fill("https://a.b")
+        box.press("Control+a")
+        self.assertEqual(self.page.evaluate("[document.activeElement.selectionStart, document.activeElement.selectionEnd]"), [0, 11])
+        self.assertEqual(len(self.page.evaluate("[...window.currentEditor.selection]")), 1)
 
     def test_arrows_lead_into_and_out_of_the_if_block_and_the_loop(self):
         self.new_flow()
@@ -1918,14 +2007,24 @@ class HideShowTests(AppTestCase):
         self.assertLess(name["x"] + name["width"], log["x"])
         self.assertEqual(self.page.locator("#runbar #pick-excel").count(), 0)
         self.shot("excel_corner")
-        # A loop counted by hand has no Excel file to choose.
-        self.page.evaluate("""() => {
+        # The name is a label, set apart from the button rather than drawn as a second one.
+        style = lambda selector: self.page.evaluate("s => { const c = getComputedStyle(document.querySelector(s)); return [c.backgroundColor, c.boxShadow, c.cursor]; }", selector)
+        self.assertNotEqual(style("#pick-excel"), style("#excel-name"))
+        self.assertEqual(style("#excel-name")[2], "default")
+        # A loop counted by hand keeps the button, and choosing a file turns it to the Excel rows.
+        path = self.page.evaluate("""() => {
             const editor = window.currentEditor;
             findLoop(editor.flow).source = 'count';
             editor.changed();
+            return editor.excelPath;
         }""")
-        expect(self.page.locator("#pick-excel")).to_have_count(0)
-        expect(self.page.locator("#canvas-excel")).to_be_hidden()
+        expect(self.page.locator("#run-count")).to_be_visible()
+        expect(self.page.locator("#pick-excel")).to_be_visible()
+        expect(self.page.locator("#excel-name")).to_contain_text("example_data.xlsx")
+        self.page.evaluate("path => window.currentEditor.useExcel(path)", path)
+        expect(self.page.locator("#excel-sheet")).to_be_visible()
+        self.assertEqual(self.page.evaluate("findLoop(window.currentEditor.flow).source"), "excel")
+        expect(self.page.locator(".toast").last).to_contain_text("each Excel row")
 
 
 class VariableChipTests(AppTestCase):
