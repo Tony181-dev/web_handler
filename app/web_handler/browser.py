@@ -1,6 +1,7 @@
 """The only module that talks to the browser automation library."""
 import os
 from pathlib import Path
+import sys
 import time
 
 from . import desktop, ocr, paths, settings, setup_checks
@@ -31,8 +32,14 @@ def launch_options(mode=settings.BROWSER_VISIBLE):
     options = {"headless": mode == settings.BROWSER_HEADLESS or os.environ.get("WEB_HANDLER_HEADLESS") == "1"}
     if not options["headless"]:
         options["args"] = ["--start-minimized" if mode == settings.BROWSER_OFFSCREEN else "--start-maximized"]
-    if setup_checks.find_chrome():
-        options["channel"] = "chrome"
+    chrome = setup_checks.find_chrome()
+    if chrome:
+        # On macOS the installed Chrome may also be in the person's own Applications folder,
+        # where the chrome channel does not look.
+        if sys.platform == "win32":
+            options["channel"] = "chrome"
+        else:
+            options["executable_path"] = str(chrome)
         return options
     chromium = setup_checks.find_bundled_chromium()
     if chromium is None:
@@ -102,7 +109,7 @@ class ChromeDriver:
             pass
 
     def show(self):
-        """Bring the window up over the whole screen, also from the taskbar."""
+        """Bring the window up over the whole screen, also from the taskbar or the Dock."""
         if not self.has_window:
             return
         self._set_window_state("maximized")

@@ -8,9 +8,20 @@ import tempfile
 from . import child_processes, paths
 
 
+MAC_CHROME = Path("Applications") / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+# What Playwright unpacks on macOS: Chrome for Testing in newer releases, Chromium in older ones.
+MAC_CHROMIUM_NAMES = ("Google Chrome for Testing", "Chromium")
+
+
 def find_chrome():
     # Lets a machine with Chrome exercise the path for machines without it.
     if os.environ.get("WEB_HANDLER_BROWSER") == "chromium":
+        return None
+    if sys.platform != "win32":
+        for folder in (Path("/"), Path.home()):
+            path = folder / MAC_CHROME
+            if path.is_file():
+                return path
         return None
     import winreg
 
@@ -35,7 +46,13 @@ def find_chrome():
 def find_bundled_chromium():
     if not paths.CHROMIUM_DIR.is_dir():
         return None
-    return next(paths.CHROMIUM_DIR.rglob("chrome.exe"), None)
+    if sys.platform == "win32":
+        return next(paths.CHROMIUM_DIR.rglob("chrome.exe"), None)
+    for name in MAC_CHROMIUM_NAMES:
+        for path in paths.CHROMIUM_DIR.rglob(name):
+            if path.parent.name == "MacOS" and path.is_file() and os.access(path, os.X_OK):
+                return path
+    return None
 
 
 def run_with_timeout(cmd, timeout, env=None):
@@ -49,7 +66,7 @@ def run_with_timeout(cmd, timeout, env=None):
             process = subprocess.Popen(
                 cmd, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                 env=paths.child_env() if env is None else env,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **child_processes.POPEN_OPTIONS,
             )
         except OSError as error:
             return None, str(error), False

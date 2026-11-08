@@ -36,7 +36,8 @@ def start_app():
     return subprocess.Popen(
         [sys.executable, str(ROOT / "app" / "main.py"), "--no-browser"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=paths.child_env(),
-        encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        encoding="utf-8", errors="replace",
+        **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32" else {"start_new_session": True}),
     )
 
 
@@ -1294,15 +1295,15 @@ class UndoRedoTests(AppTestCase):
         self.new_flow()
         self.add("goto", "click")
         self.page.locator("#canvas").click(position={"x": 700, "y": 600})
-        self.page.keyboard.press("Control+z")
+        self.page.keyboard.press("ControlOrMeta+z")
         self.assertEqual(self.kinds(), ["goto"])
-        self.page.keyboard.press("Control+y")
+        self.page.keyboard.press("ControlOrMeta+y")
         self.assertEqual(self.kinds(), ["goto", "click"])
-        self.page.keyboard.press("Control+z")
-        self.page.keyboard.press("Control+Shift+z")
+        self.page.keyboard.press("ControlOrMeta+z")
+        self.page.keyboard.press("ControlOrMeta+Shift+z")
         self.assertEqual(self.kinds(), ["goto", "click"])
         self.page.locator("#flow-name").focus()
-        self.page.keyboard.press("Control+z")
+        self.page.keyboard.press("ControlOrMeta+z")
         self.assertEqual(self.kinds(), ["goto", "click"])
 
     def test_opening_a_flow_with_excel_starts_with_nothing_to_undo(self):
@@ -1692,10 +1693,40 @@ class CanvasViewTests(AppTestCase):
         self.lasso("#canvas .node >> nth=2", "#canvas .node >> nth=2")
         self.assertEqual(self.page.evaluate("[...window.currentEditor.selection]"), [inner[1]])
         self.page.locator("#canvas .node").nth(0).click()
-        self.page.keyboard.down("Control")
+        self.page.keyboard.down("ControlOrMeta")
         self.lasso("#canvas .node >> nth=2", "#canvas .node >> nth=2")
-        self.page.keyboard.up("Control")
+        self.page.keyboard.up("ControlOrMeta")
         expect(self.page.locator(".selection-bar")).to_contain_text("Selected blocks: 2")
+
+    def test_a_diagram_that_fits_in_the_view_can_still_be_dragged(self):
+        """On a wide screen the diagram fits, and dragging must still move it, as on a sheet of paper."""
+        self.build()
+        canvas = self.page.locator("#canvas")
+        first = lambda: self.page.locator("#canvas .node").nth(0).bounding_box()
+        before = first()
+        box = canvas.bounding_box()
+        # Below the blocks, where nothing else is.
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] - 80
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x + 150, y - 60, steps=6)
+        self.page.mouse.up()
+        after = first()
+        self.assertAlmostEqual(after["x"], before["x"] + 150, delta=2)
+        self.assertAlmostEqual(after["y"], before["y"] - 60, delta=2)
+        # The other way too, past where the diagram started.
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x - 300, y + 100, steps=6)
+        self.page.mouse.up()
+        moved = first()
+        self.assertAlmostEqual(moved["x"], after["x"] - 300, delta=2)
+        self.assertAlmostEqual(moved["y"], after["y"] + 100, delta=2)
+        # Reset brings it back to where it was.
+        self.page.click("#zoom-reset")
+        home = first()
+        self.assertAlmostEqual(home["x"], before["x"], delta=2)
+        self.assertAlmostEqual(home["y"], before["y"], delta=2)
 
     def test_dragging_an_empty_spot_moves_the_view(self):
         self.build()
@@ -1761,7 +1792,7 @@ class CanvasViewTests(AppTestCase):
         self.page.evaluate("window.currentEditor.selectMany(window.currentEditor.flow.steps.slice(1).map(step => step.id))")
         self.page.click("#make-loop")
         self.page.mouse.click(5, 300)
-        self.page.keyboard.press("Control+a")
+        self.page.keyboard.press("ControlOrMeta+a")
         ids = self.page.evaluate("allBlockIds(window.currentEditor.flow)")
         self.assertEqual(sorted(self.page.evaluate("[...window.currentEditor.selection]")), sorted(ids))
         loop = self.page.evaluate("findLoop(window.currentEditor.flow).id")
@@ -1776,7 +1807,7 @@ class CanvasViewTests(AppTestCase):
         # In a text box Ctrl+A still takes its text.
         box = self.page.locator("[data-field=url]")
         box.fill("https://a.b")
-        box.press("Control+a")
+        box.press("ControlOrMeta+a")
         self.assertEqual(self.page.evaluate("[document.activeElement.selectionStart, document.activeElement.selectionEnd]"), [0, 11])
         self.assertEqual(len(self.page.evaluate("[...window.currentEditor.selection]")), 1)
 
@@ -1824,7 +1855,7 @@ class CanvasViewTests(AppTestCase):
             self.page.locator(f".tool[data-kind={kind}]").click()
         self.page.click("#view-toggle")
         middle = lambda box: box["x"] + box["width"] / 2
-        nodes = self.page.locator("#canvas > .canvas-content > .lane > .item .node")
+        nodes = self.page.locator("#canvas > .canvas-room > .canvas-content > .lane > .item .node")
         expect(nodes).to_have_count(3)
         frame = middle(self.page.locator(".if-frame").bounding_box())
         for index in range(3):

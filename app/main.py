@@ -1,12 +1,11 @@
 """Start Web Handler: open the running app if there is one, otherwise serve it.
 
 --stop ends a running app. --install finishes installing the offline package.
---forget-secrets removes the saved secrets from Windows Credential Manager. All three are for the installers.
+--forget-secrets removes the saved secrets from Windows Credential Manager or the macOS Keychain. All three are for the installers.
 """
-import ctypes
-from ctypes import wintypes
 import os
 from pathlib import Path
+import signal
 import sys
 import webbrowser
 
@@ -16,7 +15,6 @@ from web_handler import paths, server  # noqa: E402
 from web_handler.i18n import t  # noqa: E402
 
 CTRL_C_EVENT = 0
-HANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
 _console_handler = None
 
 
@@ -30,16 +28,37 @@ def say(text):
 def shut_down_when_console_closes(app):
     """Closing the window, signing out or shutting down ends this process without any Python cleanup."""
 
-    def on_console_event(event):
-        if event == CTRL_C_EVENT:
-            return False
+    def close():
         app.log.add("info", t("Closing the app."))
         app.jobs.shutdown()
         os._exit(0)
 
+    if sys.platform != "win32":
+        # The Terminal window closing hangs up, and --stop or logging out asks this process to end.
+        # Ctrl+C stays a KeyboardInterrupt, which ends the app the same way below.
+        numbers = (signal.SIGHUP, signal.SIGTERM)
+
+        def on_signal(*_):
+            # A second signal while closing must not start closing over again.
+            for number in numbers:
+                signal.signal(number, signal.SIG_IGN)
+            close()
+
+        for number in numbers:
+            signal.signal(number, on_signal)
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    def on_console_event(event):
+        if event == CTRL_C_EVENT:
+            return False
+        close()
+
     # Kept in a global: Windows calls it at any time, so it must never be garbage collected.
     global _console_handler
-    _console_handler = HANDLER_ROUTINE(on_console_event)
+    _console_handler = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)(on_console_event)
     ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_handler, True)
 
 
@@ -78,7 +97,7 @@ def forget_secrets():
     except Exception as error:
         say(t("Could not remove the saved secrets: {error}", error=error))
         return 1
-    say(t("Removed {count} saved secrets from Windows Credential Manager.", count=len(names)))
+    say(t("Removed {count} saved secrets from {store}.", count=len(names), store=secret_store.store_name()))
     return 0
 
 

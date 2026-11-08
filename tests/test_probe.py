@@ -166,10 +166,11 @@ class ProcessTests(unittest.TestCase):
             self.assertIn("đã khởi động", outcome.output)
             grandchild_pid = pid_file.read_text()
             time.sleep(1)
-            listing = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {grandchild_pid}", "/NH"],
-                capture_output=True, text=True,
-            ).stdout
+            command = (
+                ["tasklist", "/FI", f"PID eq {grandchild_pid}", "/NH"] if sys.platform == "win32"
+                else ["/bin/ps", "-p", grandchild_pid, "-o", "pid="]
+            )
+            listing = subprocess.run(command, capture_output=True, text=True).stdout
             self.assertNotIn(grandchild_pid, listing)
 
     def test_parse_child_output_uses_last_marker_line(self):

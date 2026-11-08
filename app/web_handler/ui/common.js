@@ -33,7 +33,25 @@ let translations = {};
 function t(text, values) {
   let result = translations[text] || text;
   for (const [name, value] of Object.entries(values || {})) result = result.split(`{${name}}`).join(value);
-  return result;
+  return IS_MAC ? macKeys(result) : result;
+}
+
+// The app and the browser showing it run on the same machine, so the browser tells which system it is.
+const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent || '');
+const START_SCRIPT = IS_MAC ? 'Start.command' : 'Start.bat';
+
+// Where the secrets are kept, as the person's system calls it.
+function secretStoreName() {
+  return IS_MAC ? t('macOS Keychain') : t('Windows Credential Manager');
+}
+
+// Shortcuts written for Windows, as a Mac keyboard and Chrome on macOS have them.
+function macKeys(text) {
+  return text
+    .replace(/\bF12\b/g, '⌘⌥I')
+    .replace(/\bCtrl\+U\b/g, '⌘⌥U')
+    .replace(/\bCtrl\+Y\b/g, '⌘⇧Z')
+    .replace(/\bCtrl\+/g, '⌘');
 }
 
 const READ_ATTEMPTS = 3;
@@ -65,7 +83,7 @@ async function api(method, path, body, options) {
       return data;
     } catch (error) {
       if (error.fromServer) throw error;
-      lastError = error.name === 'AbortError' ? new Error(t('The app did not answer in time.')) : new Error(t('Cannot reach the app. Is the Start.bat window still open?'));
+      lastError = error.name === 'AbortError' ? new Error(t('The app did not answer in time.')) : new Error(t('Cannot reach the app. Is the {script} window still open?', { script: START_SCRIPT }));
     } finally {
       clearTimeout(timer);
     }

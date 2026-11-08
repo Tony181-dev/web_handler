@@ -3,6 +3,10 @@ import os
 from pathlib import Path
 import sys
 
+WINDOWS = sys.platform == "win32"
+# The file that opens the app, as the person knows it.
+START_SCRIPT = "Start.bat" if WINDOWS else "Start.command"
+
 ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = ROOT / "app"
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -12,7 +16,8 @@ CHROMIUM_DIR = RUNTIME_DIR / "chromium"
 OFFLINE_DIR = ROOT / "offline"
 WHEELS_DIR = OFFLINE_DIR / "wheels"
 REQUIREMENTS_FILE = OFFLINE_DIR / "requirements.txt"
-CHROMIUM_ZIP = OFFLINE_DIR / "chromium.zip"
+# A zip on Windows. A tar on macOS, which keeps the links and the run permissions an app bundle needs.
+CHROMIUM_ZIP = OFFLINE_DIR / ("chromium.zip" if WINDOWS else "chromium.tar.gz")
 
 
 def data_dir():

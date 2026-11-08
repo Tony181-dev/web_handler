@@ -125,7 +125,7 @@ function openSecrets() {
       await api('POST', '/api/secrets', { name: nameInput.value.trim(), value: valueInput.value });
       nameInput.value = '';
       valueInput.value = '';
-      toast(t('Saved to Windows Credential Manager.'));
+      toast(t('Saved to {store}.', { store: secretStoreName() }));
       reload();
       if (window.onSecretsChanged) window.onSecretsChanged();
     } catch (error) { showError(error); }
@@ -133,7 +133,7 @@ function openSecrets() {
   openModal({
     title: t('Secrets (passwords, accounts)'),
     body: el('div', null,
-      el('p.muted', { text: t('Values are kept in Windows Credential Manager and never shown again. The flow file holds only the name, for example {{secret:your_password}}.'), style: 'margin-bottom:12px' }),
+      el('p.muted', { text: t('Values are kept in {store} and never shown again. The flow file holds only the name, for example {{secret:your_password}}.', { store: secretStoreName() }), style: 'margin-bottom:12px' }),
       list,
       el('div.divider'),
       el('div.field', null, el('label.field-label', { text: t('Name'), for: 'secret-name' }), nameInput, el('div.hint', { text: t('A name you choose, used to pick this secret in a block.') })),

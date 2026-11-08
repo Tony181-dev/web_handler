@@ -1,13 +1,13 @@
 """Browser work in its own process. Reads JSON commands on stdin, writes events on stdout.
 
 The first line says what to do. Later lines are commands such as stop or continue.
-Secrets are read here, directly from Credential Manager, and never cross the pipe.
+Secrets are read here, directly from the system's password store, and never cross the pipe.
 """
 import ctypes
 import json
-import msvcrt
 import os
 import queue
+import select
 import sys
 import threading
 import time
@@ -32,10 +32,15 @@ class PipeLines:
     While a read waits on a pipe, Windows blocks every call that queries that
     handle, and DLLs do so as they load. A thread sitting in a read therefore
     hangs the process for good on the next import of a compiled module.
+    macOS has no such trap, and the same polling keeps both alike.
     """
 
     def __init__(self):
-        self.handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+        self.fd = sys.stdin.fileno()
+        if sys.platform == "win32":
+            import msvcrt
+
+            self.handle = msvcrt.get_osfhandle(self.fd)
         self.buffer = b""
         self.closed = False
 
@@ -49,11 +54,22 @@ class PipeLines:
             return 0
         return count.value
 
+    def _arrived(self):
+        """The bytes waiting in the pipe, read without ever blocking."""
+        if sys.platform == "win32":
+            available = self._available()
+            return os.read(self.fd, available) if available else b""
+        arrived = b""
+        while not self.closed and select.select([self.fd], [], [], 0)[0]:
+            chunk = os.read(self.fd, 65536)
+            if not chunk:
+                self.closed = True
+            arrived += chunk
+        return arrived
+
     def poll(self):
         """Return the complete lines that have arrived so far."""
-        available = self._available()
-        if available:
-            self.buffer += os.read(sys.stdin.fileno(), available)
+        self.buffer += self._arrived()
         *lines, self.buffer = self.buffer.split(b"\n")
         return [line.decode("utf-8", "replace") for line in lines]
 

@@ -58,6 +58,33 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
 - Đường dẫn luôn trong nháy kép khi `echo`, vì tên thư mục, kể cả tên user Windows, được phép có `&`. Thư mục đích đến PowerShell qua biến môi trường, không ghép vào câu lệnh.
 - Thư viện khóa theo hash: `tools/requirements.lock` ghim cả 22 wheel (kể cả thư viện phụ như numpy, onnxruntime) kèm SHA-256. Build tải bằng `--require-hashes --no-deps`, và file này được chép thành `offline/requirements.txt` nên máy cài cũng kiểm tra từng wheel. Đã thử: wheel bị sửa 1 byte bị từ chối. Muốn nâng thư viện thì sửa `tools/requirements.txt`, chạy `python tools/build_package.py --update-lock`, xem lại thay đổi rồi mới build. Chromium vẫn tải qua Playwright (HTTPS, không ghim hash).
 
+## macOS (nhánh `macos`, từ 2026-11-08)
+
+Nhánh `macos` làm cho cùng một mã nguồn chạy và cài được trên macOS. Phần Windows giữ nguyên: mã riêng của Windows chuyển sang file `*_windows.py`, mã riêng của macOS nằm ở `*_macos.py` hoặc `*_posix.py`, còn file cũ (`child_processes.py`, `desktop.py`, `file_dialog.py`) chỉ chọn đúng bản theo `sys.platform`.
+
+Yêu cầu: macOS 14 trở lên với chip Apple, macOS 13 trở lên với chip Intel (wheel của numpy và onnxruntime đòi vậy). Python riêng của app là python-build-standalone 3.12.16 bản `aarch64-apple-darwin` hoặc `x86_64-apple-darwin`, SHA-256 ghim trong `tools/build_probe.py` theo file SHA256SUMS của bản phát hành.
+
+File người dùng mở (thay cho `.bat`, viết bằng bash, dòng LF do `.gitattributes` ép):
+- `Start.command`: giải nén `offline/python.tar.gz` vào `runtime/` ở lần đầu, xóa dấu quarantine của Python, chạy `app/main.py`. Không chạy được thì thử `python3.12`/`python3` của máy (bỏ qua `/usr/bin/python3` khi chưa cài Command Line Tools, vì nó chỉ bật hộp thoại cài). Lỗi thì dừng chờ Enter, trừ khi có `WEB_HANDLER_NO_PAUSE`.
+- `Install.command`: trong thư mục mã nguồn thì đóng gói (`tools/build_package.py`). Trong zip đã giải nén thì cài vào `~/Library/Application Support/WebHandler` (hoặc thư mục truyền vào), chép bằng `rsync --delete`, chỉ cài vào thư mục trống hoặc bản cũ. Tạo `~/Applications/Web Handler.app` và `~/Applications/Uninstall Web Handler.app`: app nhỏ không ký số, script bên trong chạy `open -a Terminal <thư mục>/Start.command`. Đường dẫn thư mục nằm trong `Contents/Resources/folder`, không ghép vào script. Không tạo lối tắt trên Desktop để tránh macOS hỏi quyền cho Terminal.
+- `Uninstall.command`: giống `Uninstall.bat` (`--yes`, `--delete-data`, hỏi y/n, `--stop`, `--forget-secrets`), chỉ xóa launcher trỏ vào đúng thư mục này. Không có bộ gỡ kiểu Inno Setup.
+- `probe/Probe.command`: bản macOS của `Probe.bat`.
+
+Khác biệt trong code:
+- Tiến trình con (`child_processes_posix.py`): macOS không có Job Object. Mỗi worker chạy trong session riêng (`start_new_session`), nên đóng Terminal hay Ctrl+C chỉ đến app, rồi app tự tắt worker. Mỗi giây app ghi lại cây tiến trình con (qua `libproc`, kèm thời điểm khởi động để không nhầm số tiến trình tái sử dụng), vì Playwright mở Chrome trong session riêng và tiến trình mồ côi chuyển sang launchd. Mỗi worker có thêm một tiến trình canh (`python -m web_handler.child_processes_posix`) chờ app chết bằng kqueue: app bị kill cứng thì nó dừng (SIGSTOP) rồi kill cả cây của worker.
+- Đóng app: đóng cửa sổ Terminal (SIGHUP), `--stop` (SIGTERM) hay đăng xuất đều chạy `jobs.shutdown()` như Windows. `--stop` hỏi SIGTERM trước, sau 10 giây mới SIGKILL.
+- Hộp chọn Excel: AppleScript `choose file` qua `/usr/bin/osascript`, câu nhắc truyền bằng tham số.
+- Đưa Chrome lên trước: `NSRunningApplication activateWithOptions:` qua ctypes, không cần quyền Accessibility. macOS có thể từ chối, khi đó cửa sổ giữ nguyên chỗ.
+- Chrome: tìm ở `/Applications` và `~/Applications`, mở bằng `executable_path` (kênh `chrome` của Playwright không tìm trong `~/Applications`). Chromium dự phòng đóng gói thành `offline/chromium.tar.gz`, vì zip làm mất symlink và quyền chạy của app bundle.
+- Bí mật: `keyring` dùng Keychain của macOS. Giao diện ghi "macOS Keychain" thay cho "Windows Credential Manager", và `Start.command` thay cho `Start.bat` (chuỗi có `{store}`, `{script}`).
+- Phím tắt: giao diện tự đổi chữ trên Mac (`Ctrl+` thành `⌘`, `Ctrl+Y` thành `⌘⇧Z`, `F12` thành `⌘⌥I`, `Ctrl+U` thành `⌘⌥U`). Phím delete (Backspace) xóa khối.
+
+Đóng gói trên Mac: `python3 tools/build_package.py` (hoặc bấm đúp `Install.command` trong mã nguồn) tạo `dist/WebHandler-<version>-macOS-<arm64|x86_64>.zip` cho đúng loại Mac đang build. Không có bộ cài exe. Lock thư viện riêng: `tools/requirements-macos-arm64.lock`, `tools/requirements-macos-x86_64.lock`, tạo bằng `--update-lock --target <tên>`. Bản x86_64 dùng numpy 2.2.6 và onnxruntime 1.23.2, vì bản mới hơn không còn wheel cho Mac Intel. Playwright tải Chromium bằng chính Python 3.12 của gói, cài từ lock vào `build/cache/tools-<target>`.
+
+Test trên Mac (2026-11-08, macOS 15.8, chip Apple, Python 3.12.16 của gói): `test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_package` 14 (8 test chỉ cho Windows được bỏ qua; có thêm `MacScriptTests` cho Install/Uninstall.command, dùng HOME giả nên không đụng `~/Applications` thật), `test_probe` 30, `test_integration` 39, `test_shutdown` 13, `test_ui` 139: đều đạt. Build thật `dist/WebHandler-0.1.14-macOS-arm64.zip` (387 MB), giải nén bằng `ditto`, cài bằng `Install.command` vào thư mục có dấu cách, ép dùng Chromium của gói (`WEB_HANDLER_BROWSER=chromium`): 7/7 mục màn hình Setup đạt (gồm Keychain), `--stop` đạt, `Uninstall.command --yes --delete-data` xóa sạch cả launcher.
+
+Chưa kiểm chứng trên macOS: bấm tay Install/Uninstall bằng Finder, hộp thoại Gatekeeper ("Open Anyway"), hộp chọn file Excel bằng tay, đưa Chrome lên trước khi chạy có cửa sổ, Mac chip Intel.
+
 ## Tính năng đã có
 
 ### Setup và đóng gói

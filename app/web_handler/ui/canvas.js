@@ -213,9 +213,38 @@ function renderCanvas(editor) {
       el('p', { text: t('Or click Record, and the tool creates the blocks as you do the work once by hand.'), style: 'margin-top:6px' })));
   }
   content.append(renderLane(editor, flow.steps, 'top'));
-  canvas.append(content);
+  const room = el('div.canvas-room', null, content);
+  const [roomX, roomY] = editor.panRoom || [0, 0];
+  room.style.padding = `${roomY}px ${roomX}px`;
+  canvas.append(room);
   canvas.scrollTop = scrollTop;
   canvas.scrollLeft = scrollLeft;
+}
+
+// Empty room around the diagram, so that it can be pulled anywhere like a sheet of paper, even when it
+// fits in the view: as much as the view, less a strip of the diagram that always stays in sight.
+// The diagram itself keeps the width of the view, so its rows of blocks wrap as before.
+const PAN_KEEP_PX = 120;
+
+function fitPanRoom(editor) {
+  const canvas = editor.canvasNode;
+  const room = canvas.querySelector('.canvas-room');
+  if (!room) return;
+  const [oldX, oldY] = editor.panRoom || [0, 0];
+  const x = Math.max(0, canvas.clientWidth - PAN_KEEP_PX);
+  const y = Math.max(0, canvas.clientHeight - PAN_KEEP_PX);
+  if (x === oldX && y === oldY) return;
+  editor.panRoom = [x, y];
+  room.style.padding = `${y}px ${x}px`;
+  // The diagram stays where it was on the screen. The first time, that is the usual top left.
+  canvas.scrollLeft += x - oldX;
+  canvas.scrollTop += y - oldY;
+}
+
+// The view with the diagram at its usual place, top left.
+function panHome(editor) {
+  const [x, y] = editor.panRoom || [0, 0];
+  editor.canvasNode.scrollTo(x, y);
 }
 
 function renderLane(editor, steps, name, emptyText) {

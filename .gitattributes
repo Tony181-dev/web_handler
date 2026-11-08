@@ -1,2 +1,4 @@
 # cmd.exe misreads batch files with LF line endings.
 *.bat text eol=crlf
+# bash cannot run scripts with CRLF line endings.
+*.command text eol=lf

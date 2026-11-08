@@ -99,7 +99,7 @@ function textPane(editor, step, key, settings) {
   return el('div', null, box, settings.hint ? el('div.hint', { text: settings.hint }) : null);
 }
 
-// A typed password goes to Windows Credential Manager under this block's own name, never into the flow file.
+// A typed password goes to the system's password store under this block's own name, never into the flow file.
 function passwordField(editor, step) {
   const ownName = `password_${editor.id}_${step.id}`;
   const [, secret] = sourceOf(step.password);
@@ -130,7 +130,7 @@ function passwordField(editor, step) {
     },
   });
   return el('div.field', null, el('label.field-label', { text: t('Password') }), tabs, withEye(input, true),
-    el('div.hint', { text: t('Saved in Windows Credential Manager under Secrets, not in the flow file.') }));
+    el('div.hint', { text: t('Saved in {store} under Secrets, not in the flow file.', { store: secretStoreName() }) }));
 }
 
 function columnPane(editor, step, key, name, memoKey) {

@@ -319,7 +319,8 @@ class FlowEditor {
       panByKey(this, event.key);
       return;
     }
-    if (event.key !== 'Delete') return;
+    // A Mac keyboard's delete key is Backspace.
+    if (event.key !== 'Delete' && !(IS_MAC && event.key === 'Backspace')) return;
     if (this.selection.size) {
       const only = this.selection.size === 1 ? findStep(this.flow, [...this.selection][0]) : null;
       if (only && only.do === 'loop') return;
@@ -529,7 +530,7 @@ class FlowEditor {
 
   resetZoom() {
     this.setZoom(1);
-    this.canvasNode.scrollTo(0, 0);
+    panHome(this);
   }
 
   renderCanvasTools() {
@@ -670,6 +671,8 @@ async function renderBuilder(id) {
     if (marked && !marked.isCollapsed) marked.removeAllRanges();
   }, true);
   editor.canvasNode.addEventListener('pointerdown', event => startCanvasPointer(event, editor));
+  // The room around the diagram follows the size of the view, also once the view first gets one.
+  new ResizeObserver(() => fitPanRoom(editor)).observe(editor.canvasNode);
   // The middle button moves the view rather than starting the browser's own scrolling.
   editor.canvasNode.addEventListener('mousedown', event => { if (event.button === 1) event.preventDefault(); });
   // Not passive, so that the wheel zooms the diagram rather than scrolling it or zooming the whole app.

@@ -1,11 +1,17 @@
-"""Secrets live in Windows Credential Manager. Only their names are stored on disk."""
+"""Secrets live in Windows Credential Manager, or the macOS Keychain. Only their names are stored on disk."""
 import json
+import sys
 
 from . import paths
 from .i18n import t
 
 SERVICE_PREFIX = "WebHandler/"
 ACCOUNT = "web_handler"
+
+
+def store_name():
+    """Where the secrets are kept, as the person's system calls it."""
+    return t("Windows Credential Manager") if sys.platform == "win32" else t("macOS Keychain")
 
 
 def _index_path():

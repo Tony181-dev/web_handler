@@ -24,7 +24,7 @@ class WorkerSession:
             [sys.executable, "-m", "web_handler.worker"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             env=paths.child_env(), cwd=str(paths.ROOT),
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            **child_processes.POPEN_OPTIONS,
             encoding="utf-8", errors="replace", bufsize=1,
         )
         # Before the job is sent, so whatever the worker starts is covered too.

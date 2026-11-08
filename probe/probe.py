@@ -17,6 +17,7 @@ import platform
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,9 @@ EXPECTED_PYTHON = (3, 12)
 MAX_DETAIL = 1500
 SERVER_ROUNDS = 20
 RESULT_MARKER = "__WEB_HANDLER_PROBE_RESULT__"
+WINDOWS = sys.platform == "win32"
+# Helpers get no console window on Windows, and a session of their own on macOS so the whole tree can be ended.
+POPEN_OPTIONS = {"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {"start_new_session": True}
 REPORT_NAME = "probe_report.txt"
 CREDENTIAL_SERVICE = "WebHandler/probe"
 
@@ -197,7 +201,7 @@ def run_with_timeout(cmd, timeout, env=None):
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 env=child_env(None) if env is None else env,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **POPEN_OPTIONS,
             )
         except OSError as error:
             return ProcessResult(None, str(error))
@@ -207,11 +211,17 @@ def run_with_timeout(cmd, timeout, env=None):
             process.wait(timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                capture_output=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
+            if WINDOWS:
+                subprocess.run(
+                    ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                    capture_output=True,
+                    **POPEN_OPTIONS,
+                )
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
             try:
                 process.wait(15)
             except subprocess.TimeoutExpired:
@@ -252,7 +262,8 @@ def check_system_python():
         "print(f'Python {platform.python_version()}, Selenium {selenium}')\n"
     )
     found = []
-    for name, arguments in (("py", ["-3"]), ("python", [])):
+    names = (("py", ["-3"]), ("python", [])) if WINDOWS else (("python3", []),)
+    for name, arguments in names:
         # Resolve through PATH first: CreateProcess also searches the folder of
         # the running interpreter, which would report the bundled Python here.
         program = shutil.which(name)
@@ -342,6 +353,11 @@ def check_local_server():
 
 
 def check_file_dialog():
+    if not WINDOWS:
+        outcome = run_with_timeout(["/usr/bin/osascript", "-e", "return 1"], 30)
+        if outcome.returncode != 0:
+            return "FAIL", outcome.output or "Không chạy được AppleScript (osascript)."
+        return "PASS", "Chạy được AppleScript, dùng cho hộp thoại chọn file của macOS."
     import ctypes
 
     ctypes.windll.comdlg32.GetOpenFileNameW
@@ -349,6 +365,12 @@ def check_file_dialog():
 
 
 def find_chrome():
+    if not WINDOWS:
+        for folder in (Path("/"), Path.home()):
+            path = folder / "Applications" / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+            if path.is_file():
+                return path
+        return None
     import winreg
 
     subkey = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
@@ -433,7 +455,7 @@ def build_checks(runner):
         ),
         Check("excel", "Đọc và ghi Excel", child_check("excel", 60), ("imports",)),
         Check(
-            "credentials", "Windows Credential Manager",
+            "credentials", "Windows Credential Manager" if WINDOWS else "macOS Keychain",
             child_check("credentials", 60), ("imports",),
         ),
     ]

@@ -3,6 +3,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import zipfile
@@ -15,7 +16,7 @@ LIBRARY_NAMES = ("playwright", "openpyxl", "beautifulsoup4", "keyring", "ddddocr
 SELF_TESTS = {
     "browser_control": ("browser", "Browser control"),
     "recording": ("recording", "Recording actions"),
-    "credentials": ("credentials", "Windows Credential Manager"),
+    "credentials": ("credentials", "Windows Credential Manager" if sys.platform == "win32" else "macOS Keychain"),
 }
 SELF_TEST_TIMEOUT = 180
 
@@ -167,8 +168,13 @@ class SetupManager:
     def _install_chromium(self):
         if paths.CHROMIUM_DIR.exists():
             shutil.rmtree(paths.CHROMIUM_DIR, ignore_errors=True)
-        with zipfile.ZipFile(paths.CHROMIUM_ZIP) as bundle:
-            bundle.extractall(paths.CHROMIUM_DIR)
+        if paths.CHROMIUM_ZIP.suffix == ".zip":
+            with zipfile.ZipFile(paths.CHROMIUM_ZIP) as bundle:
+                bundle.extractall(paths.CHROMIUM_DIR)
+            return
+        # The app bundle inside needs its links and run permissions, which only a tar keeps.
+        with tarfile.open(paths.CHROMIUM_ZIP) as bundle:
+            bundle.extractall(paths.CHROMIUM_DIR, filter="tar")
 
     def _run_self_tests(self):
         for key, (test, title) in SELF_TESTS.items():

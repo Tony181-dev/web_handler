@@ -321,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.origin_is_allowed():
             return self.send_json({"error": t("Invalid origin.")}, 403)
         if not self.has_key(query):
-            return self.send_bytes(403, t("The session key is missing. Open the app with Start.bat.").encode("utf-8"), "text/plain; charset=utf-8")
+            return self.send_bytes(403, t("The session key is missing. Open the app with {script}.", script=paths.START_SCRIPT).encode("utf-8"), "text/plain; charset=utf-8")
         try:
             if path == "/":
                 return self.serve_index()

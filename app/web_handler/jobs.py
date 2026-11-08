@@ -13,7 +13,7 @@ from . import flow as flow_module, i18n, paths, runner, settings
 from .i18n import t
 from .workers import WorkerSession
 
-# Windows ends a closing console's processes after 5 seconds.
+# Windows ends a closing console's processes after 5 seconds. macOS would wait, but runs end alike on both.
 SHUTDOWN_GRACE_SECONDS = 4
 STOP_NOW_GRACE_SECONDS = 3
 # A worker that has reported its end but cannot close its browser must not block the next run.

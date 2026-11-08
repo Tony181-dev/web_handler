@@ -25,3 +25,6 @@ Desktop.ini
 # Editors
 .vscode/
 .idea/
+
+# macOS
+.DS_Store

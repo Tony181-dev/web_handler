@@ -1,10 +1,11 @@
-"""Build dist/WebHandler-<version>.zip and dist/WebHandler-Setup-<version>.exe.
+"""Build the release for the system this runs on, with internet access.
 
-Run on a Windows machine with internet access and Inno Setup 6.
-A finished build leaves only the new release in dist: the zip, the Setup exe and the unpacked
+- Windows, with Inno Setup 6: dist/WebHandler-<version>.zip and dist/WebHandler-Setup-<version>.exe.
+- macOS: dist/WebHandler-<version>-macOS-<arm64 or x86_64>.zip, for Macs of the same kind as this one.
+A finished build leaves only the new release in dist: the zip, the Setup exe on Windows and the unpacked
 WebHandler folder, whose data and runtime are kept. A failed build leaves dist as it was.
 Use --no-chromium for a smaller package that relies on Chrome being installed.
-Use --no-installer to build only the zip.
+Use --no-installer to build only the zip. macOS has no Setup exe, so there it is always only the zip.
 """
 import argparse
 import filecmp
@@ -13,6 +14,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 
@@ -23,8 +25,13 @@ import build_probe  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / "tools" / "requirements.txt"
 # Every wheel the package ships, pinned with its SHA-256: pip refuses a file that differs,
-# so a library replaced upstream cannot slip into a build. Made from REQUIREMENTS by --update-lock.
-LOCK = ROOT / "tools" / "requirements.lock"
+# so a library replaced upstream cannot slip into a build. Made from REQUIREMENTS by --update-lock,
+# one for each system, as the wheels differ.
+LOCKS = {
+    "windows-x86_64": ROOT / "tools" / "requirements.lock",
+    "macos-arm64": ROOT / "tools" / "requirements-macos-arm64.lock",
+    "macos-x86_64": ROOT / "tools" / "requirements-macos-x86_64.lock",
+}
 CACHE_DIR = ROOT / "build" / "cache"
 STAGING_DIR = ROOT / "build" / "package"
 DIST_DIR = ROOT / "dist"
@@ -40,11 +47,11 @@ def version():
     return namespace["__version__"]
 
 
-def pip_download(destination, *arguments):
+def pip_download(destination, target, *arguments):
     subprocess.run(
         [
             sys.executable, "-m", "pip", "download", "--disable-pip-version-check",
-            "--only-binary=:all:", "--platform", "win_amd64", "--python-version", "3.12",
+            "--only-binary=:all:", "--platform", build_probe.TARGETS[target]["wheels"], "--python-version", "3.12",
             "--implementation", "cp", "--abi", "cp312",
             "--dest", str(destination), *arguments,
         ],
@@ -52,8 +59,8 @@ def pip_download(destination, *arguments):
     )
 
 
-def download_wheels(destination):
-    pip_download(destination, "--require-hashes", "--no-deps", "-r", str(LOCK))
+def download_wheels(destination, target):
+    pip_download(destination, target, "--require-hashes", "--no-deps", "-r", str(LOCKS[target]))
 
 
 def lock_line(wheel):
@@ -62,51 +69,74 @@ def lock_line(wheel):
     return f"{name}=={wheel_version} \\\n    --hash=sha256:{build_probe.sha256(wheel)}"
 
 
-def update_lock():
+def update_lock(target):
     """Resolve REQUIREMENTS again and pin what it gives. Review the changes before building with them."""
+    lock = LOCKS[target]
     with tempfile.TemporaryDirectory() as folder:
-        pip_download(Path(folder), "-r", str(REQUIREMENTS))
+        pip_download(Path(folder), target, "-r", str(REQUIREMENTS))
         wheels = sorted(Path(folder).glob("*.whl"), key=lambda path: path.name.lower())
         lines = [lock_line(wheel) for wheel in wheels]
-    LOCK.write_text(
-        "# Made by tools/build_package.py --update-lock from requirements.txt. Do not edit by hand.\n"
+    lock.write_text(
+        f"# Made by tools/build_package.py --update-lock --target {target} from requirements.txt. Do not edit by hand.\n"
         + "\n".join(lines) + "\n",
         encoding="utf-8",
     )
-    print(f"Pinned {len(lines)} wheels in {LOCK}")
+    print(f"Pinned {len(lines)} wheels in {lock}")
 
 
-def playwright_site():
-    """Playwright for downloading Chromium: the app's own copy, or a private one on a fresh checkout."""
-    site = ROOT / "runtime" / "site"
-    if (site / "playwright").is_dir():
-        return site
-    tools = CACHE_DIR / "tools"
+def build_python(archive, target):
+    """The package's own Python, unpacked once for the build: Playwright runs on the Python it was made for."""
+    folder = CACHE_DIR / f"python-{target}"
+    if not folder.is_dir():
+        partial = CACHE_DIR / f"python-{target}.part"
+        shutil.rmtree(partial, ignore_errors=True)
+        with tarfile.open(archive) as tar:
+            tar.extractall(partial, filter="tar")
+        partial.replace(folder)
+    if build_probe.is_windows(target):
+        return folder / "python" / "python.exe"
+    return folder / "python" / "bin" / "python3"
+
+
+def playwright_site(python, target):
+    """Playwright for downloading Chromium, installed from the lock for the build alone."""
+    tools = CACHE_DIR / f"tools-{target}"
     if not (tools / "playwright").is_dir():
         subprocess.run(
             [
-                sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
-                "--require-hashes", "--target", str(tools), "-r", str(LOCK),
+                str(python), "-m", "pip", "install", "--isolated", "--disable-pip-version-check",
+                "--require-hashes", "--target", str(tools), "-r", str(LOCKS[target]),
             ],
             check=True,
         )
     return tools
 
 
-def chromium_zip(destination):
-    """Download Chromium with the bundled Playwright, once, and pack only what is needed."""
-    browsers = CACHE_DIR / "browsers"
-    env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(browsers))
-    env["PYTHONPATH"] = str(playwright_site())
-    subprocess.run([sys.executable, "-m", "playwright", "install", "--no-shell", "chromium"], check=True, env=env)
+def chromium_archive(destination, python, target):
+    """Download Chromium with the bundled Playwright, once, and pack only what is needed.
+
+    A zip for Windows. A tar for macOS: the app bundle holds links and run permissions a zip loses.
+    """
+    browsers = CACHE_DIR / f"browsers-{target}"
+    env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(browsers), PYTHONNOUSERSITE="1")
+    env["PYTHONPATH"] = str(playwright_site(python, target))
+    subprocess.run([str(python), "-m", "playwright", "install", "--no-shell", "chromium"], check=True, env=env)
     folders = sorted(browsers.glob("chromium-*"))
     if not folders:
         raise RuntimeError("Chromium was not downloaded.")
     source = folders[-1]
-    with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-        for path in sorted(source.rglob("*")):
-            if path.is_file() and not path.name.startswith("INSTALLATION_COMPLETE"):
-                bundle.write(path, path.relative_to(source.parent).as_posix())
+
+    def wanted(path):
+        return not path.name.startswith("INSTALLATION_COMPLETE")
+
+    if build_probe.is_windows(target):
+        with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
+            for path in sorted(source.rglob("*")):
+                if path.is_file() and wanted(path):
+                    bundle.write(path, path.relative_to(source.parent).as_posix())
+        return
+    with tarfile.open(destination, "w:gz", compresslevel=6) as bundle:
+        bundle.add(source, source.name, filter=lambda info: info if wanted(Path(info.name)) else None)
 
 
 def copy_app(package):
@@ -183,9 +213,27 @@ def build_installer(package, compiler, output_dir):
     return output_dir / f"{PACKAGE_NAME}-Setup-{version()}.exe"
 
 
+def copy_scripts(package, target):
+    """The files a person opens, with the line endings their system needs."""
+    if build_probe.is_windows(target):
+        for name in ("Start.bat", "README.txt", "README.vi.txt", "Install.bat", "Uninstall.bat"):
+            build_probe.write_crlf(ROOT / name, package / name)
+        return
+    for name in ("Start.command", "Install.command", "Uninstall.command"):
+        build_probe.write_lf(ROOT / name, package / name, executable=True)
+    for name in ("README.txt", "README.vi.txt"):
+        build_probe.write_lf(ROOT / name, package / name)
+
+
+def release_name(target):
+    if build_probe.is_windows(target):
+        return f"{PACKAGE_NAME}-{version()}"
+    return f"{PACKAGE_NAME}-{version()}-macOS-{target.split('-', 1)[1]}"
+
+
 def build(with_chromium, with_installer):
-    if sys.platform != "win32":
-        raise SystemExit("The package must be built on Windows.")
+    target = build_probe.host_target()
+    with_installer = with_installer and build_probe.is_windows(target)
     compiler = find_inno_setup() if with_installer else None
     if with_installer and compiler is None:
         raise SystemExit(
@@ -194,7 +242,7 @@ def build(with_chromium, with_installer):
     DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     build_probe.CACHE_DIR = CACHE_DIR
-    archive = build_probe.download_python()
+    archive = build_probe.download_python(target)
     package = STAGING_DIR / PACKAGE_NAME
     if STAGING_DIR.exists():
         shutil.rmtree(STAGING_DIR)
@@ -202,27 +250,24 @@ def build(with_chromium, with_installer):
     (offline / "wheels").mkdir(parents=True)
 
     print("Packing Python...")
-    build_probe.repack_python(archive, offline / "python.zip")
+    build_probe.pack_python(archive, offline, target)
     print("Downloading libraries...")
-    download_wheels(offline / "wheels")
+    download_wheels(offline / "wheels", target)
     # The machine installing it checks every wheel against these hashes too.
-    shutil.copy2(LOCK, offline / "requirements.txt")
+    shutil.copy2(LOCKS[target], offline / "requirements.txt")
     if with_chromium:
         print("Packing Chromium...")
-        chromium_zip(offline / "chromium.zip")
+        name = "chromium.zip" if build_probe.is_windows(target) else "chromium.tar.gz"
+        chromium_archive(offline / name, build_python(archive, target), target)
 
     copy_app(package)
-    build_probe.write_crlf(ROOT / "Start.bat", package / "Start.bat")
-    build_probe.write_crlf(ROOT / "README.txt", package / "README.txt")
-    build_probe.write_crlf(ROOT / "README.vi.txt", package / "README.vi.txt")
-    build_probe.write_crlf(ROOT / "Install.bat", package / "Install.bat")
-    build_probe.write_crlf(ROOT / "Uninstall.bat", package / "Uninstall.bat")
+    copy_scripts(package, target)
 
     # Made next to the package first: dist only changes once everything is built.
     made = STAGING_DIR / "release"
     made.mkdir()
     print("Creating the zip file...")
-    name = f"{PACKAGE_NAME}-{version()}"
+    name = release_name(target)
     built = [Path(shutil.make_archive(str(made / name), "zip", STAGING_DIR, PACKAGE_NAME))]
     if compiler:
         print("Creating the installer...")
@@ -245,8 +290,9 @@ if __name__ == "__main__":
     parser.add_argument("--no-chromium", action="store_true")
     parser.add_argument("--no-installer", action="store_true")
     parser.add_argument("--update-lock", action="store_true", help="pin the libraries again from requirements.txt, then stop")
+    parser.add_argument("--target", choices=sorted(LOCKS), help="the system whose lock --update-lock makes (default: this one)")
     options = parser.parse_args()
     if options.update_lock:
-        update_lock()
+        update_lock(options.target or build_probe.host_target())
     else:
         build(not options.no_chromium, not options.no_installer)
