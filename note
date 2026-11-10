@@ -1,6 +1,6 @@
 # Web Handler: ghi chú dự án
 
-Cập nhật: 2026-11-03. Phiên bản hiện tại: **0.1.14**.
+Cập nhật: 2026-11-10. Phiên bản hiện tại: **0.1.14**.
 
 Web Handler là tool tự động hóa thao tác trên web và Excel, không cần viết code, chạy cục bộ trên Windows. Người dùng dựng quy trình bằng cách kéo thả khối, chỉ phần tử trên trang, khoanh vùng lặp, chọn Excel rồi bấm chạy. Tool được dựng từ ý tưởng của script gốc `CB_item_tool.py`. Script gốc vẫn giữ nguyên, không sửa.
 
@@ -9,12 +9,13 @@ Web Handler là tool tự động hóa thao tác trên web và Excel, không c�
 | Hạng mục | Tình trạng |
 |---|---|
 | App, bộ cài exe và file zip 0.1.14 | Xong |
-| Test tự động của app | Ngày 2026-11-05: `test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_shutdown` 13, `test_integration` 39, `test_package` 12 đạt; `test_ui` 136/137, chỉ `test_setup_screen` lỗi (mục Recording actions đứng ở Not tried quá 120 giây), lỗi cả khi bỏ thay đổi trong ngày nên chưa rõ nguyên nhân |
+| Test tự động của app | Ngày 2026-11-10 trên Windows, nhánh `windows` (đã có phần macOS): `test_i18n` 19, `test_core` 104, `test_html_reader` 18, `test_package` 4, `test_package_windows` 8 (1 bỏ qua), `test_probe` 30, `test_shutdown` 13, `test_integration` 39, `test_ui` 140: đều đạt, kể cả `test_setup_screen` từng lỗi ngày 2026-11-05. `test_package_windows` có lần lỗi khi dọn thư mục tạm vì `unins000.exe` vừa chép còn bị khóa (nghi Avast quét), chạy lại 3 lần đều đạt |
+| Build Windows sau khi tách phần macOS | Ngày 2026-11-10: `build_package.py` (đường build mới, Chromium tải bằng Python của gói) tạo được zip 427 MB và Setup exe 429 MB vào thư mục thử, không đụng `dist`. Giải nén zip, `Start.bat --install` đạt; 3 self-test của màn hình Setup đạt với Chrome và với Chromium của gói. `dist` vẫn là bản 0.1.14 cũ, chưa có tính năng mới: bấm `Install.bat` để cập nhật |
 | Test công cụ probe | 30/30 đạt |
 | Bộ cài 0.1.4 chạy ở chế độ im lặng | Cài, chạy demo (3 OK, 1 Lỗi, 1 Bỏ qua), đóng cửa sổ giữa lượt chạy, mở lại, cài đè khi app đang chạy, gỡ: đều đạt. `Install.bat` cũng đạt |
 | Bộ cài có giao diện | **Chưa bấm thử bằng tay**, gồm các trang của trình cài và hộp hỏi xóa dữ liệu khi gỡ |
 | Máy công ty và hệ thống thật | **Chưa kiểm chứng, đây là rủi ro lớn nhất** |
-| Git | Repo: https://github.com/Tony181-dev/web_handler, gốc repo là thư mục `web_handler/`. File `note` trong repo là bản sao của ghi chú này. Exe và zip quá lớn nên không commit, chỉ có trên máy |
+| Git | Repo: https://github.com/Tony181-dev/web_handler, gốc repo là thư mục `web_handler/`. Ba nhánh `main` (phần chung), `windows`, `macos` (xem mục Nhánh git). File `note` trong repo là bản sao của ghi chú này. Exe và zip quá lớn nên không commit, chỉ có trên máy |
 
 ## Cách chạy
 
