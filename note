@@ -58,6 +58,18 @@ Bảo mật của các file cài đặt (rà ngày 2026-11-04):
 - Đường dẫn luôn trong nháy kép khi `echo`, vì tên thư mục, kể cả tên user Windows, được phép có `&`. Thư mục đích đến PowerShell qua biến môi trường, không ghép vào câu lệnh.
 - Thư viện khóa theo hash: `tools/requirements.lock` ghim cả 22 wheel (kể cả thư viện phụ như numpy, onnxruntime) kèm SHA-256. Build tải bằng `--require-hashes --no-deps`, và file này được chép thành `offline/requirements.txt` nên máy cài cũng kiểm tra từng wheel. Đã thử: wheel bị sửa 1 byte bị từ chối. Muốn nâng thư viện thì sửa `tools/requirements.txt`, chạy `python tools/build_package.py --update-lock`, xem lại thay đổi rồi mới build. Chromium vẫn tải qua Playwright (HTTPS, không ghim hash).
 
+## Nhánh git (từ 2026-11-10)
+
+- `main`: phần chung cho mọi hệ điều hành: lõi chạy quy trình, giao diện, bản dịch, công cụ build, test chung. File chung chỉ được có những chỗ rẽ nhỏ theo `sys.platform`; `child_processes.py`, `desktop.py`, `file_dialog.py` chỉ chọn bản của hệ điều hành đang chạy. Riêng `main` thì không chạy được, vì thiếu phần của từng hệ điều hành.
+- `windows` = `main` cộng file riêng của Windows: `Start.bat`, `Install.bat`, `Uninstall.bat`, `probe/Probe.bat`, `tools/installer.iss`, `tools/requirements.lock`, `app/web_handler/*_windows.py`, `tests/test_package_windows.py`.
+- `macos` = `main` cộng file riêng của macOS: `Start.command`, `Install.command`, `Uninstall.command`, `probe/Probe.command`, `tools/requirements-macos-*.lock`, `app/web_handler/child_processes_posix.py`, `desktop_macos.py`, `file_dialog_macos.py`, `tests/test_package_macos.py`.
+
+Cách làm:
+- Sửa file chung thì commit trên `main`, rồi `git merge main` vào cả `windows` và `macos`. Thay đổi chưa commit đi theo khi `git checkout main` vì file chung giống nhau ở cả ba nhánh.
+- Sửa chỉ cho một hệ điều hành thì commit thẳng vào nhánh đó.
+- Không đưa file riêng của hệ điều hành lên `main`, và không sửa file chung trên nhánh hệ điều hành, để merge luôn sạch.
+- Chạy, test và build trên nhánh của hệ điều hành đó. Trên máy Windows này, thư mục `web_handler` để ở nhánh `windows`, vì `Install.bat` chỉ có ở đó.
+
 ## macOS (nhánh `macos`, từ 2026-11-08)
 
 Nhánh `macos` làm cho cùng một mã nguồn chạy và cài được trên macOS. Phần Windows giữ nguyên: mã riêng của Windows chuyển sang file `*_windows.py`, mã riêng của macOS nằm ở `*_macos.py` hoặc `*_posix.py`, còn file cũ (`child_processes.py`, `desktop.py`, `file_dialog.py`) chỉ chọn đúng bản theo `sys.platform`.
@@ -316,7 +328,7 @@ Toàn bộ nằm trong `web_handler/`.
 | `app/web_handler/system_log.py` | Log hệ thống |
 | `app/web_handler/demo_site.py`, `file_dialog.py`, `paths.py` | Trang demo, hộp thoại chọn file, đường dẫn |
 | `app/web_handler/ui/` | Giao diện: `index.html`, `app.css`, `common.js`, `home.js`, `canvas.js`, `properties.js`, `builder.js`, `record.js`, `run.js`, `setup.js`, `log.js`, `app.js` |
-| `tests/` | `test_i18n.py`, `test_core.py`, `test_html_reader.py`, `test_shutdown.py`, `test_integration.py`, `test_ui.py`, `test_probe.py`, `test_package.py` |
+| `tests/` | `test_i18n.py`, `test_core.py`, `test_html_reader.py`, `test_shutdown.py`, `test_integration.py`, `test_ui.py`, `test_probe.py`, `test_package.py`; trên nhánh hệ điều hành có thêm `test_package_windows.py` hoặc `test_package_macos.py` |
 | `tools/` | `build_package.py`, `installer.iss`, `build_probe.py`, các file requirements |
 | `probe/` | Công cụ dò khả năng chạy trên máy công ty |
 | `dist/` | Hiện có `WebHandler-Setup-0.1.14.exe`, `WebHandler-0.1.14.zip`, `WebHandlerProbe/` và bản đang dùng `WebHandler/`. Từ lần build tới chỉ còn exe, zip của bản mới và `WebHandler/` |
